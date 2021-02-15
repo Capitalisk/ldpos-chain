@@ -22,7 +22,7 @@
   "dependencies": {
     "bip39": "^3.0.3",
     "ldpos-client": "^5.0.1",
-    "ldpos-knex-dal": "^1.2.0",
+    "ldpos-knex-dal": "^1.2.1",
     "lite-merkle": "^1.0.1",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
