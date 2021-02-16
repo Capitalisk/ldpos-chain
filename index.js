@@ -2544,7 +2544,7 @@ module.exports = class LDPoSChainModule {
       }
 
       accountStream.pendingTransactionVerificationCount++;
-      let { senderAccount, multisigMemberAccounts } = await accountStream.senderAccountPromise;
+      let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
       try {
         if (multisigMemberAccounts) {
           this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
@@ -2583,8 +2583,8 @@ module.exports = class LDPoSChainModule {
 
     let accountStreamConsumer = accountStream.createConsumer();
 
-    accountStream.senderAccountPromise = this.getTransactionSenderAccountDetails(senderAddress);
-    let { senderAccount, multisigMemberAccounts } = await accountStream.senderAccountPromise;
+    accountStream.senderInfoPromise = this.getTransactionSenderAccountDetails(senderAddress);
+    let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
 
     try {
       if (multisigMemberAccounts) {
