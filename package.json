@@ -22,12 +22,12 @@
   "dependencies": {
     "bip39": "^3.0.3",
     "ldpos-client": "^5.1.1",
-    "ldpos-knex-dal": "^1.2.2",
     "lite-merkle": "^1.0.1",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
+    "ldpos-knex-dal": "^1.2.2",
     "mocha": "^8.2.1"
   }
 }
