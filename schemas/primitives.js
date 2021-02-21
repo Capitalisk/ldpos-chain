@@ -61,7 +61,7 @@ function validatePublicKey(propertyName, packet) {
     throw new Error(`Public key in ${propertyName} must be a string`);
   }
   if (publicKey.length !== PUBLIC_KEY_LENGTH) {
-    throw new Error(`Public key in ${propertyName} must have a length of 44 characters`);
+    throw new Error(`Public key in ${propertyName} must have a length of ${PUBLIC_KEY_LENGTH} characters`);
   }
 }
 
