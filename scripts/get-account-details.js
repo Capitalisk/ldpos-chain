@@ -3,6 +3,7 @@
 const bip39 = require('bip39');
 const LiteMerkle = require('lite-merkle');
 const mnemonic = process.argv[2];
+const network = process.argv[3] || 'ldpos';
 
 if (!mnemonic) {
   console.error('Passphrase mnemonic was not specified');
@@ -19,7 +20,6 @@ let merkle = new LiteMerkle({
   nodeEncoding: NODE_ENCODING
 });
 
-let network = 'ldpos';
 let seed = bip39.mnemonicToSeedSync(mnemonic).toString(SEED_ENCODING);
 
 console.log('SEED:', seed);
