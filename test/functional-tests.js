@@ -33,8 +33,7 @@ describe('Functional tests', async () => {
       config: {
         components: {
           dal: {
-            libPath: dalLibPath,
-            clearAllDataOnInit: true
+            libPath: dalLibPath
           }
         }
       },
@@ -101,6 +100,8 @@ describe('Functional tests', async () => {
     describe('with a single registered delegate', async () => {
 
       beforeEach(async () => {
+        await chainModule.clearAllData();
+
         // Forger address: ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f
         options = {
           genesisPath: './test/utils/genesis-functional.json',
@@ -223,6 +224,8 @@ describe('Functional tests', async () => {
     let multisigClient;
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       options = {
         genesisPath: './test/utils/genesis-functional.json',
         forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
@@ -654,6 +657,8 @@ describe('Functional tests', async () => {
   describe('transfer transaction', async () => {
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       options = {
         genesisPath: './test/utils/genesis-functional.json',
         forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
@@ -804,6 +809,8 @@ describe('Functional tests', async () => {
     let caughtError;
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       options = {
         genesisPath: './test/utils/genesis-functional.json',
         forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
@@ -956,6 +963,8 @@ describe('Functional tests', async () => {
   describe('unvote transaction', async () => {
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       options = {
         genesisPath: './test/utils/genesis-functional.json',
         forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
@@ -1067,6 +1076,8 @@ describe('Functional tests', async () => {
   describe('registerMultisigWallet transaction', async () => {
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       options = {
         genesisPath: './test/utils/genesis-functional.json',
         forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
@@ -1284,6 +1295,8 @@ describe('Functional tests', async () => {
     let caughtError;
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       caughtError = null;
 
       options = {
@@ -1416,6 +1429,8 @@ describe('Functional tests', async () => {
     let caughtError;
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       caughtError = null;
 
       options = {
@@ -1525,6 +1540,8 @@ describe('Functional tests', async () => {
     let caughtError;
 
     beforeEach(async () => {
+      await chainModule.clearAllData();
+
       caughtError = null;
 
       options = {

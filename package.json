@@ -27,7 +27,7 @@
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
-    "ldpos-knex-dal": "^1.2.2",
+    "ldpos-knex-dal": "^1.2.3",
     "mocha": "^8.2.1"
   }
 }

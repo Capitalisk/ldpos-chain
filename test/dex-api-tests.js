@@ -35,8 +35,7 @@ describe('DEX API tests', async () => {
       config: {
         components: {
           dal: {
-            libPath: dalLibPath,
-            clearAllDataOnInit: true
+            libPath: dalLibPath
           }
         }
       },
@@ -84,6 +83,8 @@ describe('DEX API tests', async () => {
     });
 
     launchChainModule = async (moduleOptions) => {
+      await chainModule.clearAllData();
+
       bootstrapEventTriggered = false;
       channel.subscribe(`${chainModule.alias}:bootstrap`, async () => {
         bootstrapEventTriggered = true;

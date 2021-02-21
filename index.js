@@ -106,6 +106,7 @@ module.exports = class LDPoSChainModule {
     }
     const DAL = require(this.dalConfig.libPath);
     this.dal = new DAL({
+      ...this.dalConfig,
       logger: this.logger
     });
 
@@ -3015,7 +3016,6 @@ module.exports = class LDPoSChainModule {
     this.genesis = require(options.genesisPath || DEFAULT_GENESIS_PATH);
     try {
       await this.dal.init({
-        ...this.dalConfig,
         genesis: this.genesis
       });
     } catch (error) {
@@ -3102,6 +3102,10 @@ module.exports = class LDPoSChainModule {
         )
       );
     }
+  }
+
+  async clearAllData() {
+    await this.dal.clearAllData();
   }
 
   async unload() {

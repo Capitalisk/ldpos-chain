@@ -4,6 +4,10 @@ const ID_BYTE_SIZE = 20;
 
 class DAL {
   constructor() {
+    this.clearAllData();
+  }
+
+  async clearAllData() {
     this.accounts = {};
     this.delegates = {};
     this.ballots = {};
