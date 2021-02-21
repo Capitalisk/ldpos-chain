@@ -149,7 +149,7 @@ function validateSignatureHash(propertyName, packet) {
     throw new Error(`Signature hash in ${propertyName} must be a string`);
   }
   if (signatureHash.length !== SIGNATURE_HASH_LENGTH) {
-    throw new Error(`Signature hash in ${propertyName} must have a length of 44 characters`);
+    throw new Error(`Signature hash in ${propertyName} must have a length of ${SIGNATURE_HASH_LENGTH} characters`);
   }
 }
 
@@ -159,7 +159,7 @@ function validateBlockId(propertyName, packet) {
     throw new Error(`Block ID must in ${propertyName} be a string`);
   }
   if (blockId.length !== ID_LENGTH) {
-    throw new Error(`Block ID in ${propertyName} must have a length of 44 characters`);
+    throw new Error(`Block ID in ${propertyName} must have a length of ${ID_LENGTH} characters`);
   }
 }
 
@@ -176,7 +176,7 @@ function validateTransactionId(propertyName, packet) {
     throw new Error(`Transaction ID in ${propertyName} must be a string`);
   }
   if (transactionId.length !== ID_LENGTH) {
-    throw new Error(`Transaction ID in ${propertyName} must have a length of 44 characters`);
+    throw new Error(`Transaction ID in ${propertyName} must have a length of ${ID_LENGTH} characters`);
   }
 }
 
