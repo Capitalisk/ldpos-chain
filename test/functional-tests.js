@@ -694,7 +694,6 @@ describe('Functional tests', async () => {
     });
 
     describe('valid transfers', async () => {
-
       let firstRecipientClient;
 
       beforeEach(async () => {
