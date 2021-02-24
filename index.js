@@ -450,6 +450,21 @@ module.exports = class LDPoSChainModule {
           return this.dal.getAccountVotes(walletAddress);
         },
         isPublic: true
+      },
+      getMinFees: {
+        handler: async action => {
+          let minTransactionFees = {};
+          let minTransactionFeeEntries = Object.entries(this.minTransactionFees || {});
+          for (let [txnType, fee] of minTransactionFeeEntries) {
+            minTransactionFees[txnType] = fee.toString();
+          }
+          return {
+            minTransactionFees,
+            minMultisigRegistrationFeePerMember: this.minMultisigRegistrationFeePerMember.toString(),
+            minMultisigTransferFeePerMember: this.minMultisigTransferFeePerMember.toString()
+          };
+        },
+        isPublic: true
       }
     };
   }
