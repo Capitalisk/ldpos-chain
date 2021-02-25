@@ -41,11 +41,12 @@ function validateMultisigTransactionSchema(multisigTransaction, minSignatures, m
       signatureHash
     } = signaturePacket;
 
+    validateWalletAddress('signerAddress', signaturePacket, networkSymbol);
+
     validatePublicKey('multisigPublicKey', signaturePacket);
     validatePublicKey('nextMultisigPublicKey', signaturePacket);
     validateKeyIndex('nextMultisigKeyIndex', signaturePacket);
 
-    validateWalletAddress('signerAddress', signaturePacket, networkSymbol);
     if (fullCheck) {
       validateSignature('signature', signaturePacket);
       if (signatureHash) {

@@ -1,4 +1,7 @@
-const { validateWalletAddressValue } = require('./primitives');
+const {
+  validateWalletAddressValue,
+  validateCount
+} = require('./primitives');
 
 function validateRegisterMultisigWalletTransactionSchema(transaction, minMultisigMembers, maxMultisigMembers, networkSymbol) {
   if (!transaction) {
@@ -17,14 +20,11 @@ function validateRegisterMultisigWalletTransactionSchema(transaction, minMultisi
       }`
     );
   }
+  validateCount('requiredSignatureCount', transaction);
   let maxMembers = Math.min(transaction.memberAddresses.length, maxMultisigMembers);
-  if (
-    typeof transaction.requiredSignatureCount !== 'number' ||
-    transaction.requiredSignatureCount < 1 ||
-    transaction.requiredSignatureCount > maxMembers
-  ) {
+  if (transaction.requiredSignatureCount < 1 || transaction.requiredSignatureCount > maxMembers) {
     throw new Error(
-      `Register multisig transaction requiredSignatureCount must be a number between 1 and ${
+      `Register multisig transaction requiredSignatureCount must be between 1 and ${
         maxMembers
       }; it cannot exceed the number of member addresses`
     );
