@@ -2139,17 +2139,7 @@ module.exports = class LDPoSChainModule {
         );
       }
     }
-    if (this.lastProcessedBlock) {
-      let existingSignatureCount = this.lastProcessedBlock.signatures.length;
-      let hasAllForgerSignatures = existingSignatureCount >= this.topActiveDelegates.length - 1;
-      if (!hasAllForgerSignatures && this.blockSignaturesToProvide > existingSignatureCount) {
-        throw new Error(
-          `The blockSignaturesToProvide option was greater than ${
-            existingSignatureCount
-          } - It cannot be greater than the number of signatures currently stored per block`
-        );
-      }
-    } else {
+    if (!this.lastProcessedBlock) {
       this.lastProcessedBlock = {
         height: 0,
         timestamp: 0,
