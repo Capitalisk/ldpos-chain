@@ -2348,6 +2348,13 @@ module.exports = class LDPoSChainModule {
                       } tried to double-forge`
                     );
                   }
+                  try {
+                    await this.verifyBlockSignature(block, selfSignature);
+                  } catch (error) {
+                    throw new Error(
+                      `Produced invalid delegate block signature - ${error.message}`
+                    );
+                  }
                   this.verifiedBlockSignatureStream.write(selfSignature);
                   await this.broadcastBlockSignature(selfSignature);
                 } catch (error) {
