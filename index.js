@@ -1184,8 +1184,8 @@ module.exports = class LDPoSChainModule {
       if (!senderTxnStream) {
         continue;
       }
-      senderTxnStream.transactionInfoMap.delete(txn.id);
       this.pendingTransactionMap.delete(txn.id);
+      senderTxnStream.transactionInfoMap.delete(txn.id);
     }
 
     // Remove transactions which are relying on outdated keys from pending transaction maps.
@@ -1227,8 +1227,8 @@ module.exports = class LDPoSChainModule {
           // Multisig transaction should only be removed if there are not enough members with valid keys
           // remaining based on the requiredSignatureCount property of the wallet.
           if (validMemberKeyCount < senderMultisigRequiredSignatureCount) {
-            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
             this.pendingTransactionMap.delete(remainingTxn.id);
+            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
           }
         }
       } else {
@@ -1245,8 +1245,8 @@ module.exports = class LDPoSChainModule {
             remainingTxn.sigPublicKey !== senderSigPublicKey &&
             remainingTxn.sigPublicKey !== senderNextSigPublicKey
           ) {
-            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
             this.pendingTransactionMap.delete(remainingTxn.id);
+            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
           }
         }
       }
@@ -1273,8 +1273,8 @@ module.exports = class LDPoSChainModule {
       let latestTxnTimestamp = latestSenderTxnTimestamps[senderAddress];
       for (let { transaction: remainingTxn } of senderTxnStream.transactionInfoMap.values()) {
         if (remainingTxn.timestamp < latestTxnTimestamp) {
-          senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
           this.pendingTransactionMap.delete(remainingTxn.id);
+          senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
         }
       }
       if (!this.isAccountStreamBusy(senderTxnStream)) {
@@ -2259,6 +2259,7 @@ module.exports = class LDPoSChainModule {
                         error.message
                       }`
                     );
+                    this.pendingTransactionMap.delete(pendingTxn.id);
                     pendingTxnInfoMap.delete(pendingTxn.id);
                     if (!pendingTxnInfoMap.size) {
                       senderTxnStream.close();
@@ -2644,11 +2645,11 @@ module.exports = class LDPoSChainModule {
             // may affect the verification of the next transaction in the stream.
             senderAccount.balance -= txnTotal;
 
+            this.pendingTransactionMap.set(accountTxn.id, accountTxn);
             accountStream.transactionInfoMap.set(accountTxn.id, {
               transaction: accountTxn,
               receivedTimestamp: Date.now()
             });
-            this.pendingTransactionMap.set(accountTxn.id, accountTxn);
 
             if (propagationMode !== PROPAGATION_MODE_NONE) {
               this.propagateTransaction(accountTxn, propagationMode === PROPAGATION_MODE_DELAYED);
@@ -2924,6 +2925,7 @@ module.exports = class LDPoSChainModule {
       let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
       for (let { transaction, receivedTimestamp } of pendingTxnInfoMap.values()) {
         if (now - receivedTimestamp >= expiry) {
+          this.pendingTransactionMap.delete(transaction.id);
           pendingTxnInfoMap.delete(transaction.id);
           if (!pendingTxnInfoMap.size) {
             senderTxnStream.close();
