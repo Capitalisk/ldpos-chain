@@ -220,7 +220,7 @@ module.exports = class LDPoSChainModule {
       getOutboundPendingTransactions: {
         handler: async action => {
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
-          validateTransactionId('walletAddress', action.params);
+          validateWalletAddress('walletAddress', action.params);
           validateOffset('offset', action.params);
           validateLimit('limit', action.params, maxLimit);
           let { walletAddress, offset, limit } = action.params;
