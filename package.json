@@ -21,7 +21,7 @@
   "license": "GPL-3.0",
   "dependencies": {
     "bip39": "^3.0.3",
-    "ldpos-client": "^5.1.1",
+    "ldpos-client": "^6.0.0",
     "lite-merkle": "^1.0.1",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
