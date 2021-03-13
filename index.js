@@ -245,7 +245,8 @@ module.exports = class LDPoSChainModule {
       },
       postTransaction: {
         handler: async action => {
-          return this.postTransaction(action.params.transaction);
+          let { transaction, skipKeyIndexCheck } = action.params;
+          return this.postTransaction(transaction, !skipKeyIndexCheck);
         },
         isPublic: true
       },
@@ -2398,9 +2399,9 @@ module.exports = class LDPoSChainModule {
     })();
   }
 
-  async postTransaction(transaction) {
+  async postTransaction(transaction, keyIndexCheck) {
     try {
-      await this.processReceivedTransaction(transaction, PROPAGATION_MODE_IMMEDIATE);
+      await this.processReceivedTransaction(transaction, PROPAGATION_MODE_IMMEDIATE, keyIndexCheck);
     } catch (error) {
       let err = new Error(error.message);
       err.name = 'InvalidTransactionError';
@@ -2511,7 +2512,7 @@ module.exports = class LDPoSChainModule {
     return !!(accountStream.pendingTransactionVerificationCount || accountStream.transactionInfoMap.size);
   }
 
-  async processReceivedTransaction(transaction, propagationMode) {
+  async processReceivedTransaction(transaction, propagationMode, keyIndexCheck) {
     try {
       validateTransactionSchema(
         transaction,
@@ -2562,9 +2563,9 @@ module.exports = class LDPoSChainModule {
       let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
       try {
         if (multisigMemberAccounts) {
-          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, true);
+          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, keyIndexCheck);
         } else {
-          this.verifySigTransactionAuthentication(senderAccount, transaction, true, true);
+          this.verifySigTransactionAuthentication(senderAccount, transaction, true, keyIndexCheck);
         }
         accountStream.write({
           transaction,
@@ -2603,9 +2604,9 @@ module.exports = class LDPoSChainModule {
 
     try {
       if (multisigMemberAccounts) {
-        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, true);
+        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, keyIndexCheck);
       } else {
-        this.verifySigTransactionAuthentication(senderAccount, transaction, true, true);
+        this.verifySigTransactionAuthentication(senderAccount, transaction, true, keyIndexCheck);
       }
       accountStream.write({
         transaction,
@@ -2681,7 +2682,7 @@ module.exports = class LDPoSChainModule {
   async startTransactionPropagationLoop() {
     this.channel.subscribe(`network:event:${this.alias}:transaction`, async (event) => {
       try {
-        await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
+        await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED, false);
       } catch (error) {
         this.logger.warn(error);
       }
@@ -2710,7 +2711,7 @@ module.exports = class LDPoSChainModule {
       );
       try {
         let transaction = await this.getSignedPendingTransaction(transactionId);
-        await this.processReceivedTransaction(transaction, PROPAGATION_MODE_NONE);
+        await this.processReceivedTransaction(transaction, PROPAGATION_MODE_NONE, false);
         return;
       } catch (error) {
         this.logger.debug(
