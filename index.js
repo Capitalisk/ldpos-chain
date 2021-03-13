@@ -1253,37 +1253,6 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    // Compute the latest timestamp for each sender account.
-    let latestSenderTxnTimestamps = {};
-    for (let txn of transactions) {
-      if (latestSenderTxnTimestamps[txn.senderAddress] == null) {
-        latestSenderTxnTimestamps[txn.senderAddress] = txn.timestamp;
-        continue;
-      }
-      if (txn.timestamp > latestSenderTxnTimestamps[txn.senderAddress]) {
-        latestSenderTxnTimestamps[txn.senderAddress] = txn.timestamp;
-      }
-    }
-
-    // Remove expired transactions from pending transaction maps.
-    for (let senderAddress of senderAddressSet) {
-      let senderTxnStream = this.pendingTransactionStreams[senderAddress];
-      if (!senderTxnStream) {
-        continue;
-      }
-      let latestTxnTimestamp = latestSenderTxnTimestamps[senderAddress];
-      for (let { transaction: remainingTxn } of senderTxnStream.transactionInfoMap.values()) {
-        if (remainingTxn.timestamp < latestTxnTimestamp) {
-          this.pendingTransactionMap.delete(remainingTxn.id);
-          senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
-        }
-      }
-      if (!this.isAccountStreamBusy(senderTxnStream)) {
-        senderTxnStream.close();
-        delete this.pendingTransactionStreams[senderAddress];
-      }
-    }
-
     await this.fetchTopActiveDelegates();
 
     this.publishToChannel(`${this.alias}:chainChanges`, {
@@ -1622,15 +1591,7 @@ module.exports = class LDPoSChainModule {
   }
 
   verifyAccountMeetsRequirements(senderAccount, transaction) {
-    let { senderAddress, amount, fee, timestamp } = transaction;
-
-    if (timestamp < senderAccount.lastTransactionTimestamp) {
-      throw new Error(
-        `Transaction was older than the last transaction processed from the sender ${
-          senderAddress
-        }`
-      );
-    }
+    let { senderAddress, amount, fee } = transaction;
 
     let txnTotal = BigInt(amount || 0) + BigInt(fee || 0);
     if (txnTotal > senderAccount.balance) {
