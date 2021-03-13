@@ -245,8 +245,8 @@ module.exports = class LDPoSChainModule {
       },
       postTransaction: {
         handler: async action => {
-          let { transaction, skipKeyIndexCheck } = action.params;
-          return this.postTransaction(transaction, !skipKeyIndexCheck);
+          let { transaction } = action.params;
+          return this.postTransaction(transaction);
         },
         isPublic: true
       },
@@ -1347,7 +1347,7 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck, keyIndexCheck) {
+  verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck) {
     validateSigTransactionSchema(transaction, signatureCheck);
 
     if (senderAccount.sigPublicKey) {
@@ -1377,19 +1377,6 @@ module.exports = class LDPoSChainModule {
     }
 
     if (signatureCheck) {
-      if (
-        keyIndexCheck &&
-        senderAccount.nextSigKeyIndex != null &&
-        transaction.nextSigKeyIndex <= senderAccount.nextSigKeyIndex
-      ) {
-        throw new Error(
-          `Transaction nextSigKeyIndex was too low for the sender account ${
-            senderAccount.address
-          }; it needs to be higher than ${
-            senderAccount.nextSigKeyIndex
-          }`
-        );
-      }
       // Check that the transaction signature corresponds to the public key.
       if (!this.ldposClient.verifyTransaction(transaction)) {
         throw new Error('Transaction senderSignature was invalid');
@@ -1403,7 +1390,7 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck, keyIndexCheck) {
+  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck) {
     let { senderAddress } = transaction;
     validateMultisigTransactionSchema(
       transaction,
@@ -1445,15 +1432,6 @@ module.exports = class LDPoSChainModule {
           throw new Error(
             `Multisig transaction signature multisigPublicKey did not match the multisigPublicKey or nextMultisigPublicKey of the member account ${
               memberAccount.address
-            }`
-          );
-        }
-        if (keyIndexCheck && nextMultisigKeyIndex <= memberAccount.nextMultisigKeyIndex) {
-          throw new Error(
-            `Multisig transaction signature nextMultisigKeyIndex from the member account ${
-              memberAccount.address
-            } was too low; it needs to be higher than ${
-              memberAccount.nextMultisigKeyIndex
             }`
           );
         }
@@ -1627,8 +1605,8 @@ module.exports = class LDPoSChainModule {
     return txnTotal;
   }
 
-  async verifySigTransactionAuth(senderAccount, transaction, signatureCheck, keyIndexCheck) {
-    this.verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck, keyIndexCheck);
+  async verifySigTransactionAuth(senderAccount, transaction, signatureCheck) {
+    this.verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck);
     return this.verifySigTransactionAuthorization(senderAccount, transaction, signatureCheck);
   }
 
@@ -1654,8 +1632,8 @@ module.exports = class LDPoSChainModule {
     return txnTotal;
   }
 
-  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck, keyIndexCheck) {
-    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck, keyIndexCheck);
+  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck) {
+    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck);
     return this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, signatureCheck);
   }
 
@@ -1816,9 +1794,9 @@ module.exports = class LDPoSChainModule {
           try {
             let txnTotal;
             if (multisigMemberAccounts) {
-              txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, senderTxn, false, false);
+              txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, senderTxn, false);
             } else {
-              txnTotal = await this.verifySigTransactionAuth(senderAccount, senderTxn, false, false);
+              txnTotal = await this.verifySigTransactionAuth(senderAccount, senderTxn, false);
             }
 
             // Subtract valid transaction total from the in-memory senderAccount balance since it
@@ -2205,9 +2183,9 @@ module.exports = class LDPoSChainModule {
                   try {
                     let txnTotal;
                     if (multisigMemberAccounts) {
-                      txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true, false);
+                      txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true);
                     } else {
-                      txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true, false);
+                      txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true);
                     }
 
                     // Subtract valid transaction total from the in-memory senderAccount balance since it
@@ -2360,9 +2338,9 @@ module.exports = class LDPoSChainModule {
     })();
   }
 
-  async postTransaction(transaction, keyIndexCheck) {
+  async postTransaction(transaction) {
     try {
-      await this.processReceivedTransaction(transaction, PROPAGATION_MODE_IMMEDIATE, keyIndexCheck);
+      await this.processReceivedTransaction(transaction, PROPAGATION_MODE_IMMEDIATE);
     } catch (error) {
       let err = new Error(error.message);
       err.name = 'InvalidTransactionError';
@@ -2473,7 +2451,7 @@ module.exports = class LDPoSChainModule {
     return !!(accountStream.pendingTransactionVerificationCount || accountStream.transactionInfoMap.size);
   }
 
-  async processReceivedTransaction(transaction, propagationMode, keyIndexCheck) {
+  async processReceivedTransaction(transaction, propagationMode) {
     try {
       validateTransactionSchema(
         transaction,
@@ -2524,9 +2502,9 @@ module.exports = class LDPoSChainModule {
       let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
       try {
         if (multisigMemberAccounts) {
-          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, keyIndexCheck);
+          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
         } else {
-          this.verifySigTransactionAuthentication(senderAccount, transaction, true, keyIndexCheck);
+          this.verifySigTransactionAuthentication(senderAccount, transaction, true);
         }
         accountStream.write({
           transaction,
@@ -2565,9 +2543,9 @@ module.exports = class LDPoSChainModule {
 
     try {
       if (multisigMemberAccounts) {
-        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, keyIndexCheck);
+        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
       } else {
-        this.verifySigTransactionAuthentication(senderAccount, transaction, true, keyIndexCheck);
+        this.verifySigTransactionAuthentication(senderAccount, transaction, true);
       }
       accountStream.write({
         transaction,
