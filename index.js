@@ -52,7 +52,7 @@ const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
 const DEFAULT_MIN_MULTISIG_MEMBERS = 1;
 const DEFAULT_MAX_MULTISIG_MEMBERS = 100;
-const DEFAULT_PENDING_TRANSACTION_EXPIRY = 604800000; // 1 week
+const DEFAULT_PENDING_TRANSACTION_EXPIRY = 86400000; // 24 hours
 const DEFAULT_PENDING_TRANSACTION_EXPIRY_CHECK_INTERVAL = 3600000; // 1 hour
 const DEFAULT_MAX_SPENDABLE_DIGITS = 25;
 const DEFAULT_MAX_TRANSACTION_MESSAGE_LENGTH = 256;
@@ -2608,32 +2608,6 @@ module.exports = class LDPoSChainModule {
             // may affect the verification of the next transaction in the stream.
             senderAccount.balance -= txnTotal;
 
-            // Do not allow an account to change their multisig public key while there are pending multisig transactions in the queue
-            // which depend on that account as a signer.
-            if (
-              accountTxn.type === 'registerMultisigDetails' &&
-              this.pendingSignerMultisigTransactions[accountTxn.senderAddress]
-            ) {
-              throw new Error(
-                `Transaction ${
-                  accountTxn.id
-                } of type registerMultisigDetails from the account ${
-                  accountTxn.senderAddress
-                } could not be processed while there were pending multisig transactions with that account as a signer`
-              );
-            }
-
-            // Do not allow an account to change their sig public key while there are pending sig transactions in the queue from that account.
-            if (accountTxn.type === 'registerSigDetails' && accountStream.transactionInfoMap.size) {
-              throw new Error(
-                `Transaction ${
-                  accountTxn.id
-                } of type registerSigDetails from the account ${
-                  accountTxn.senderAddress
-                } could not be processed while there were pending transactions from that account`
-              );
-            }
-
             if (multisigMemberAccounts) {
               // Check that the multisig transaction is valid with respect to existing pending transactions so that it does
               // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
@@ -2641,6 +2615,7 @@ module.exports = class LDPoSChainModule {
               for (let txnSignature of accountTxn.signatures) {
                 let { signerAddress, multisigPublicKey } = txnSignature;
                 let memberAccount = multisigMemberAccounts[signerAddress];
+
                 if (multisigPublicKey === memberAccount.nextMultisigPublicKey) {
                   // If the transaction was signed with the next public key.
                   if (
@@ -2648,7 +2623,7 @@ module.exports = class LDPoSChainModule {
                     accountTxn.nextMultisigKeyIndex <= memberAccount.highestMultisigPublicKeyIndex
                   ) {
                     throw new Error(
-                      `Transaction ${
+                      `Multisig transaction ${
                         accountTxn.id
                       } nextMultisigKeyIndex ${
                         accountTxn.nextMultisigKeyIndex
@@ -2670,7 +2645,7 @@ module.exports = class LDPoSChainModule {
                     accountTxn.nextMultisigKeyIndex >= memberAccount.lowestNextMultisigPublicKeyIndex
                   ) {
                     throw new Error(
-                      `Transaction ${
+                      `Multisig transaction ${
                         accountTxn.id
                       } nextMultisigKeyIndex ${
                         accountTxn.nextMultisigKeyIndex
@@ -2689,6 +2664,32 @@ module.exports = class LDPoSChainModule {
               }
               this.trackPendingMultisigTransactionSigners(accountTxn);
             } else {
+              // Do not allow an account to change their multisig public key while there are pending multisig transactions in the queue
+              // which depend on that account as a signer.
+              if (
+                accountTxn.type === 'registerMultisigDetails' &&
+                this.pendingSignerMultisigTransactions[accountTxn.senderAddress]
+              ) {
+                throw new Error(
+                  `Transaction ${
+                    accountTxn.id
+                  } of type registerMultisigDetails from the account ${
+                    accountTxn.senderAddress
+                  } could not be processed while there were pending multisig transactions with that account as a signer`
+                );
+              }
+
+              // Do not allow an account to change their sig public key while there are pending sig transactions in the queue from that account.
+              if (accountTxn.type === 'registerSigDetails' && accountStream.transactionInfoMap.size) {
+                throw new Error(
+                  `Transaction ${
+                    accountTxn.id
+                  } of type registerSigDetails from the account ${
+                    accountTxn.senderAddress
+                  } could not be processed while there were pending transactions from that account`
+                );
+              }
+
               // Check that the sig transaction is valid with respect to existing pending transactions so that it does
               // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
               // due to the stateful nature of the signature scheme.
