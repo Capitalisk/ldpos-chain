@@ -81,7 +81,7 @@ const DEFAULT_MIN_TRANSACTION_FEES = {
 };
 
 const DEFAULT_MIN_MULTISIG_REGISTRATION_FEE_PER_MEMBER = '100000000';
-const DEFAULT_MIN_MULTISIG_TRANSFER_FEE_PER_MEMBER = '500000';
+const DEFAULT_MIN_MULTISIG_TRANSACTION_FEE_PER_MEMBER = '500000';
 
 const NO_PEER_LIMIT = -1;
 const ACCOUNT_TYPE_SIG = 'sig';
@@ -464,7 +464,7 @@ module.exports = class LDPoSChainModule {
           return {
             minTransactionFees,
             minMultisigRegistrationFeePerMember: this.minMultisigRegistrationFeePerMember.toString(),
-            minMultisigTransferFeePerMember: this.minMultisigTransferFeePerMember.toString()
+            minMultisigTransactionFeePerMember: this.minMultisigTransactionFeePerMember.toString()
           };
         },
         isPublic: true
@@ -1313,7 +1313,7 @@ module.exports = class LDPoSChainModule {
     let { type, fee, minFee } = this.getTransactionFeeInfo(transaction);
 
     let multisigMemberCount = Object.keys(multisigMemberAccounts || {}).length;
-    minFee += BigInt(multisigMemberCount) * this.minMultisigTransferFeePerMember;
+    minFee += BigInt(multisigMemberCount) * this.minMultisigTransactionFeePerMember;
 
     if (fee < minFee) {
       throw new Error(
@@ -2551,11 +2551,7 @@ module.exports = class LDPoSChainModule {
         );
       }
 
-      try {
-        await txnAuthorizedPromise;
-      } catch (error) {
-        this.logger.debug(error);
-      }
+      await txnAuthorizedPromise;
 
       return { senderAccount, multisigMemberAccounts };
     }
@@ -3103,7 +3099,7 @@ module.exports = class LDPoSChainModule {
       minMultisigMembers: DEFAULT_MIN_MULTISIG_MEMBERS,
       maxMultisigMembers: DEFAULT_MAX_MULTISIG_MEMBERS,
       minMultisigRegistrationFeePerMember: DEFAULT_MIN_MULTISIG_REGISTRATION_FEE_PER_MEMBER,
-      minMultisigTransferFeePerMember: DEFAULT_MIN_MULTISIG_TRANSFER_FEE_PER_MEMBER,
+      minMultisigTransactionFeePerMember: DEFAULT_MIN_MULTISIG_TRANSACTION_FEE_PER_MEMBER,
       pendingTransactionExpiry: DEFAULT_PENDING_TRANSACTION_EXPIRY,
       pendingTransactionExpiryCheckInterval: DEFAULT_PENDING_TRANSACTION_EXPIRY_CHECK_INTERVAL,
       maxSpendableDigits: DEFAULT_MAX_SPENDABLE_DIGITS,
@@ -3132,7 +3128,7 @@ module.exports = class LDPoSChainModule {
     this.options.minTransactionFees = minTransactionFees;
     this.minTransactionFees = minTransactionFees;
     this.minMultisigRegistrationFeePerMember = BigInt(this.options.minMultisigRegistrationFeePerMember);
-    this.minMultisigTransferFeePerMember = BigInt(this.options.minMultisigTransferFeePerMember);
+    this.minMultisigTransactionFeePerMember = BigInt(this.options.minMultisigTransactionFeePerMember);
 
     this.forgingInterval = this.options.forgingInterval;
     this.forgerCount = this.options.forgerCount;
