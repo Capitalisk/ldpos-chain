@@ -84,6 +84,7 @@ const DEFAULT_MIN_MULTISIG_REGISTRATION_FEE_PER_MEMBER = '100000000';
 const DEFAULT_MIN_MULTISIG_TRANSFER_FEE_PER_MEMBER = '500000';
 
 const NO_PEER_LIMIT = -1;
+const ACCOUNT_TYPE_SIG = 'sig';
 const ACCOUNT_TYPE_MULTISIG = 'multisig';
 
 module.exports = class LDPoSChainModule {
@@ -112,6 +113,7 @@ module.exports = class LDPoSChainModule {
 
     this.pendingTransactionStreams = {};
     this.pendingTransactionMap = new Map();
+    this.pendingSignerMultisigTransactions = {};
     this.pendingBlocks = [];
     this.topActiveDelegates = [];
     this.topActiveDelegateAddressSet = new Set();
@@ -843,7 +845,7 @@ module.exports = class LDPoSChainModule {
           if (error.name === 'AccountDidNotExistError') {
             return {
               address,
-              type: 'sig',
+              type: ACCOUNT_TYPE_SIG,
               balance: 0n
             };
           } else {
@@ -1181,12 +1183,7 @@ module.exports = class LDPoSChainModule {
 
     // Remove transactions which have been processed as part of the current block from pending transaction maps.
     for (let txn of transactions) {
-      let senderTxnStream = this.pendingTransactionStreams[txn.senderAddress];
-      if (!senderTxnStream) {
-        continue;
-      }
-      this.pendingTransactionMap.delete(txn.id);
-      senderTxnStream.transactionInfoMap.delete(txn.id);
+      this.untrackPendingTransaction(txn);
     }
 
     // Remove transactions which are relying on outdated keys from pending transaction maps.
@@ -1228,8 +1225,7 @@ module.exports = class LDPoSChainModule {
           // Multisig transaction should only be removed if there are not enough members with valid keys
           // remaining based on the requiredSignatureCount property of the wallet.
           if (validMemberKeyCount < senderMultisigRequiredSignatureCount) {
-            this.pendingTransactionMap.delete(remainingTxn.id);
-            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
+            this.untrackPendingTransaction(remainingTxn);
           }
         }
       } else {
@@ -1246,8 +1242,7 @@ module.exports = class LDPoSChainModule {
             remainingTxn.sigPublicKey !== senderSigPublicKey &&
             remainingTxn.sigPublicKey !== senderNextSigPublicKey
           ) {
-            this.pendingTransactionMap.delete(remainingTxn.id);
-            senderTxnStream.transactionInfoMap.delete(remainingTxn.id);
+            this.untrackPendingTransaction(remainingTxn);
           }
         }
       }
@@ -1923,20 +1918,62 @@ module.exports = class LDPoSChainModule {
         transactionGroupMap[txn.senderAddress] = { transactions: [], totalFees: 0 };
       }
       let transactionGroup = transactionGroupMap[txn.senderAddress];
+      if (!transactionGroup.type) {
+        transactionGroup.type = txn.sigPublicKey ? ACCOUNT_TYPE_SIG : ACCOUNT_TYPE_MULTISIG;
+      }
       transactionGroup.totalFees += txn.fee;
       transactionGroup.transactions.push(txn);
     }
     let transactionGroupList = Object.values(transactionGroupMap);
     for (let transactionGroup of transactionGroupList) {
-      transactionGroup.transactions.sort((a, b) => {
-        if (a.timestamp < b.timestamp) {
-          return -1;
+      // Within each group, sort transactions based on key indexes.
+      if (transactionGroup.type === ACCOUNT_TYPE_SIG) {
+        transactionGroup.transactions.sort((a, b) => {
+          if (a.nextSigKeyIndex < b.nextSigKeyIndex) {
+            return -1;
+          }
+          if (a.nextSigKeyIndex > b.nextSigKeyIndex) {
+            return 1;
+          }
+          return 0;
+        });
+      } else {
+        // For multisig accounts, sort based on the average key index change from the minimum for each signing member.
+        let memberMinKeyIndexes = {};
+        for (let txn of transactionGroup.transactions) {
+          for (let signaturePacket of txn.signatures) {
+            if (
+              !memberMinKeyIndexes[signaturePacket.signerAddress] ||
+              signaturePacket.nextMultisigKeyIndex < memberMinKeyIndexes[signaturePacket.signerAddress]
+            ) {
+              memberMinKeyIndexes[signaturePacket.signerAddress] = signaturePacket.nextMultisigKeyIndex;
+            };
+          }
         }
-        if (a.timestamp > b.timestamp) {
-          return 1;
-        }
-        return 0;
-      });
+        transactionGroup.transactions.sort((a, b) => {
+          let totalKeyIndexDeltaA = 0;
+          for (let signaturePacket of a.signatures) {
+            let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
+            totalKeyIndexDeltaA += keyIndexDelta;
+          }
+          let averageKeyIndexDeltaA = totalKeyIndexDeltaA / a.signatures.length;
+
+          let totalKeyIndexDeltaB = 0;
+          for (let signaturePacket of b.signatures) {
+            let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
+            totalKeyIndexDeltaB += keyIndexDelta;
+          }
+          let averageKeyIndexDeltaB = totalKeyIndexDeltaB / b.signatures.length;
+
+          if (averageKeyIndexDeltaA < averageKeyIndexDeltaB) {
+            return -1;
+          }
+          if (averageKeyIndexDeltaA > averageKeyIndexDeltaB) {
+            return 1;
+          }
+          return 0;
+        });
+      }
       transactionGroup.averageFee = transactionGroup.totalFees / transactionGroup.transactions.length;
     }
 
@@ -2200,12 +2237,7 @@ module.exports = class LDPoSChainModule {
                         error.message
                       }`
                     );
-                    this.pendingTransactionMap.delete(pendingTxn.id);
-                    pendingTxnInfoMap.delete(pendingTxn.id);
-                    if (!pendingTxnInfoMap.size) {
-                      senderTxnStream.close();
-                      delete this.pendingTransactionStreams[senderAddress];
-                    }
+                    this.untrackPendingTransaction(pendingTxn);
                   }
                 }
                 return senderAccountInfo;
@@ -2513,10 +2545,7 @@ module.exports = class LDPoSChainModule {
         });
       } catch (error) {
         accountStream.pendingTransactionVerificationCount--;
-        if (!this.isAccountStreamBusy(accountStream)) {
-          accountStream.close();
-          delete this.pendingTransactionStreams[senderAddress];
-        }
+        this.cleanupPendingTransactionStream(senderAddress);
         throw new Error(
           `Received unauthorized transaction ${transaction.id} - ${error.message}`
         );
@@ -2554,10 +2583,7 @@ module.exports = class LDPoSChainModule {
       });
     } catch (error) {
       accountStream.pendingTransactionVerificationCount--;
-      if (!this.isAccountStreamBusy(accountStream)) {
-        accountStream.close();
-        delete this.pendingTransactionStreams[senderAddress];
-      }
+      this.cleanupPendingTransactionStream(senderAddress);
       throw new Error(`Received invalid transaction - ${error.message}`);
     }
 
@@ -2585,6 +2611,133 @@ module.exports = class LDPoSChainModule {
             // Subtract valid transaction total from the in-memory senderAccount balance since it
             // may affect the verification of the next transaction in the stream.
             senderAccount.balance -= txnTotal;
+
+            // Do not allow an account to change their multisig public key while there are pending multisig transactions in the queue
+            // which depend on that account as a signer.
+            if (
+              accountTxn.type === 'registerMultisigDetails' &&
+              this.pendingSignerMultisigTransactions[accountTxn.senderAddress]
+            ) {
+              throw new Error(
+                `Transaction ${
+                  accountTxn.id
+                } of type registerMultisigDetails from the account ${
+                  accountTxn.senderAddress
+                } could not be processed while there were pending multisig transactions with that account as a signer`
+              );
+            }
+
+            // Do not allow an account to change their sig public key while there are pending sig transactions in the queue from that account.
+            if (accountTxn.type === 'registerSigDetails' && accountStream.transactionInfoMap.size) {
+              throw new Error(
+                `Transaction ${
+                  accountTxn.id
+                } of type registerSigDetails from the account ${
+                  accountTxn.senderAddress
+                } could not be processed while there were pending transactions from that account`
+              );
+            }
+
+            if (multisigMemberAccounts) {
+              // Check that the multisig transaction is valid with respect to existing pending transactions so that it does
+              // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
+              // due to the stateful nature of the signature scheme.
+              for (let txnSignature of accountTxn.signatures) {
+                let { signerAddress, multisigPublicKey } = txnSignature;
+                let memberAccount = multisigMemberAccounts[signerAddress];
+                if (multisigPublicKey === memberAccount.nextMultisigPublicKey) {
+                  // If the transaction was signed with the next public key.
+                  if (
+                    memberAccount.highestMultisigPublicKeyIndex != null &&
+                    accountTxn.nextMultisigKeyIndex <= memberAccount.highestMultisigPublicKeyIndex
+                  ) {
+                    throw new Error(
+                      `Transaction ${
+                        accountTxn.id
+                      } nextMultisigKeyIndex ${
+                        accountTxn.nextMultisigKeyIndex
+                      } of member ${
+                        signerAddress
+                      } was too low relative to the nextMultisigKeyIndex of other pending transactions - Check that the member signed transactions in the correct order`
+                    );
+                  }
+                  if (
+                    memberAccount.lowestNextMultisigPublicKeyIndex == null ||
+                    accountTxn.nextMultisigKeyIndex < memberAccount.lowestNextMultisigPublicKeyIndex
+                  ) {
+                    memberAccount.lowestNextMultisigPublicKeyIndex = accountTxn.nextMultisigKeyIndex;
+                  }
+                } else {
+                  // If the transaction was signed with the current public key.
+                  if (
+                    memberAccount.lowestNextMultisigPublicKeyIndex != null &&
+                    accountTxn.nextMultisigKeyIndex >= memberAccount.lowestNextMultisigPublicKeyIndex
+                  ) {
+                    throw new Error(
+                      `Transaction ${
+                        accountTxn.id
+                      } nextMultisigKeyIndex ${
+                        accountTxn.nextMultisigKeyIndex
+                      } of member ${
+                        signerAddress
+                      } was too high relative to the nextMultisigKeyIndex of other pending transactions - Check that the member signed transactions in the correct order`
+                    );
+                  }
+                  if (
+                    memberAccount.highestMultisigPublicKeyIndex == null ||
+                    accountTxn.nextSigKeyIndex > memberAccount.highestMultisigPublicKeyIndex
+                  ) {
+                    memberAccount.highestMultisigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                  }
+                }
+              }
+              this.trackPendingMultisigTransactionSigners(accountTxn);
+            } else {
+              // Check that the sig transaction is valid with respect to existing pending transactions so that it does
+              // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
+              // due to the stateful nature of the signature scheme.
+              if (accountTxn.sigPublicKey === senderAccount.nextSigPublicKey) {
+                // If the transaction was signed with the next public key.
+                if (
+                  senderAccount.highestSigPublicKeyIndex != null &&
+                  accountTxn.nextSigKeyIndex <= senderAccount.highestSigPublicKeyIndex
+                ) {
+                  throw new Error(
+                    `Transaction ${
+                      accountTxn.id
+                    } nextSigKeyIndex ${
+                      accountTxn.nextSigKeyIndex
+                    } was too low relative to the nextSigKeyIndex of other pending transactions - Check that transactions were signed in the correct order`
+                  );
+                }
+                if (
+                  senderAccount.lowestNextSigPublicKeyIndex == null ||
+                  accountTxn.nextSigKeyIndex < senderAccount.lowestNextSigPublicKeyIndex
+                ) {
+                  senderAccount.lowestNextSigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                }
+              } else {
+                // If the transaction was signed with the current public key.
+                if (
+                  senderAccount.lowestNextSigPublicKeyIndex != null &&
+                  accountTxn.nextSigKeyIndex >= senderAccount.lowestNextSigPublicKeyIndex
+                ) {
+                  throw new Error(
+                    `Transaction ${
+                      accountTxn.id
+                    } nextSigKeyIndex ${
+                      accountTxn.nextSigKeyIndex
+                    } was too high relative to the nextSigKeyIndex of other pending transactions - Check that transactions were signed in the correct order`
+                  );
+                }
+                if (
+                  senderAccount.highestSigPublicKeyIndex == null ||
+                  accountTxn.nextSigKeyIndex > senderAccount.highestSigPublicKeyIndex
+                ) {
+                  senderAccount.highestSigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                }
+              }
+            }
 
             this.pendingTransactionMap.set(accountTxn.id, accountTxn);
             accountStream.transactionInfoMap.set(accountTxn.id, {
@@ -2857,7 +3010,53 @@ module.exports = class LDPoSChainModule {
     });
   }
 
-  cleanupPendingTransactionStreams(expiry) {
+  trackPendingMultisigTransactionSigners(transaction) {
+    if (transaction.signatures) {
+      for (let signaturePacket of transaction.signatures) {
+        let { signerAddress } = signaturePacket;
+        if (!this.pendingSignerMultisigTransactions[signerAddress]) {
+          this.pendingSignerMultisigTransactions[signerAddress] = new Set();
+        }
+        this.pendingSignerMultisigTransactions[signerAddress].add(transaction.id);
+      }
+    }
+  }
+
+  untrackPendingMultisigTransactionSigners(transaction) {
+    if (transaction.signatures) {
+      for (let signaturePacket of transaction.signatures) {
+        let { signerAddress } = signaturePacket;
+        let multisigTxnSet = this.pendingSignerMultisigTransactions[signerAddress];
+        if (multisigTxnSet) {
+          multisigTxnSet.delete(transaction.id);
+          if (!multisigTxnSet.size) {
+            delete this.pendingSignerMultisigTransactions[signerAddress];
+          }
+        }
+      }
+    }
+  }
+
+  cleanupPendingTransactionStream(senderAddress) {
+    let transactionStream = this.pendingTransactionStreams[senderAddress];
+    if (!this.isAccountStreamBusy(transactionStream)) {
+      transactionStream.close();
+      delete this.pendingTransactionStreams[senderAddress];
+    }
+  }
+
+  untrackPendingTransaction(transaction) {
+    let { senderAddress } = transaction;
+    this.untrackPendingMultisigTransactionSigners(transaction);
+    let senderTxnStream = this.pendingTransactionStreams[senderAddress];
+    if (senderTxnStream) {
+      this.pendingTransactionMap.delete(transaction.id);
+      senderTxnStream.transactionInfoMap.delete(transaction.id);
+      this.cleanupPendingTransactionStream(senderAddress);
+    }
+  }
+
+  expirePendingTransactionStreams(expiry) {
     let now = Date.now();
 
     let pendingSenderList = Object.keys(this.pendingTransactionStreams);
@@ -2866,12 +3065,7 @@ module.exports = class LDPoSChainModule {
       let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
       for (let { transaction, receivedTimestamp } of pendingTxnInfoMap.values()) {
         if (now - receivedTimestamp >= expiry) {
-          this.pendingTransactionMap.delete(transaction.id);
-          pendingTxnInfoMap.delete(transaction.id);
-          if (!pendingTxnInfoMap.size) {
-            senderTxnStream.close();
-            delete this.pendingTransactionStreams[senderAddress];
-          }
+          this.untrackPendingTransaction(transaction);
         }
       }
     }
@@ -2880,7 +3074,7 @@ module.exports = class LDPoSChainModule {
   async startPendingTransactionExpiryLoop() {
     if (this.isActive) {
       this._pendingTransactionExpiryCheckIntervalId = setInterval(() => {
-        this.cleanupPendingTransactionStreams(this.pendingTransactionExpiry);
+        this.expirePendingTransactionStreams(this.pendingTransactionExpiry);
       }, this.pendingTransactionExpiryCheckInterval);
     }
   }
