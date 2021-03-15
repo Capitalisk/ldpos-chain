@@ -57,7 +57,8 @@ const DEFAULT_PENDING_TRANSACTION_EXPIRY_CHECK_INTERVAL = 3600000; // 1 hour
 const DEFAULT_MAX_SPENDABLE_DIGITS = 25;
 const DEFAULT_MAX_TRANSACTION_MESSAGE_LENGTH = 256;
 const DEFAULT_MAX_VOTES_PER_ACCOUNT = 5;
-const DEFAULT_MAX_TRANSACTION_BACKPRESSURE_PER_ACCOUNT = 30;
+const DEFAULT_MAX_TRANSACTION_BACKPRESSURE_PER_ACCOUNT = 32;
+const DEFAULT_MAX_PENDING_TRANSACTIONS_PER_ACCOUNT = 64;
 const DEFAULT_MAX_CONSECUTIVE_BLOCK_FETCH_FAILURES = 5;
 const DEFAULT_MAX_CONSECUTIVE_TRANSACTION_FETCH_FAILURES = 3;
 const DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT = 6;
@@ -74,9 +75,9 @@ const DEFAULT_MIN_TRANSACTION_FEES = {
   transfer: '10000000',
   vote: '20000000',
   unvote: '20000000',
-  registerSigDetails: '10000000',
-  registerMultisigDetails: '10000000',
-  registerForgingDetails: '10000000',
+  registerSigDetails: '500000000',
+  registerMultisigDetails: '500000000',
+  registerForgingDetails: '100000000',
   registerMultisigWallet: '50000000'
 };
 
@@ -2516,6 +2517,18 @@ module.exports = class LDPoSChainModule {
     if (this.pendingTransactionStreams[senderAddress]) {
       let accountStream = this.pendingTransactionStreams[senderAddress];
 
+      if (accountStream.transactionInfoMap.size >= this.maxPendingTransactionsPerAccount) {
+        throw new Error(
+          `Transaction ${
+            transaction.id
+          } was rejected because account ${
+            senderAddress
+          } has exceeded the maximum allowed pending transaction count of ${
+            this.maxPendingTransactionsPerAccount
+          }`
+        );
+      }
+
       let backpressure = accountStream.getBackpressure();
 
       if (backpressure >= this.maxTransactionBackpressurePerAccount) {
@@ -3107,6 +3120,7 @@ module.exports = class LDPoSChainModule {
       maxTransactionMessageLength: DEFAULT_MAX_TRANSACTION_MESSAGE_LENGTH,
       maxVotesPerAccount: DEFAULT_MAX_VOTES_PER_ACCOUNT,
       maxTransactionBackpressurePerAccount: DEFAULT_MAX_TRANSACTION_BACKPRESSURE_PER_ACCOUNT,
+      maxPendingTransactionsPerAccount: DEFAULT_MAX_PENDING_TRANSACTIONS_PER_ACCOUNT,
       maxConsecutiveBlockFetchFailures: DEFAULT_MAX_CONSECUTIVE_BLOCK_FETCH_FAILURES,
       maxConsecutiveTransactionFetchFailures: DEFAULT_MAX_CONSECUTIVE_TRANSACTION_FETCH_FAILURES,
       catchUpConsensusPollCount: DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT,
@@ -3148,6 +3162,7 @@ module.exports = class LDPoSChainModule {
     this.maxTransactionMessageLength = this.options.maxTransactionMessageLength;
     this.maxVotesPerAccount = this.options.maxVotesPerAccount;
     this.maxTransactionBackpressurePerAccount = this.options.maxTransactionBackpressurePerAccount;
+    this.maxPendingTransactionsPerAccount = this.options.maxPendingTransactionsPerAccount;
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
