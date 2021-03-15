@@ -2621,7 +2621,7 @@ module.exports = class LDPoSChainModule {
   async startTransactionPropagationLoop() {
     this.channel.subscribe(`network:event:${this.alias}:transaction`, async (event) => {
       try {
-        await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED, false);
+        await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
       } catch (error) {
         this.logger.warn(error);
       }
@@ -2650,7 +2650,7 @@ module.exports = class LDPoSChainModule {
       );
       try {
         let transaction = await this.getSignedPendingTransaction(transactionId);
-        await this.processReceivedTransaction(transaction, PROPAGATION_MODE_NONE, false);
+        await this.processReceivedTransaction(transaction, PROPAGATION_MODE_NONE);
         return;
       } catch (error) {
         this.logger.debug(
