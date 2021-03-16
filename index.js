@@ -2599,7 +2599,7 @@ module.exports = class LDPoSChainModule {
     (async () => {
       for await (let txnInfo of accountStreamConsumer) {
         let {
-          transaction: accountTxn,
+          transaction: currentTxn,
           resolveTransaction: resolveTxn,
           rejectTransaction: rejectTxn
         } = txnInfo;
@@ -2609,13 +2609,13 @@ module.exports = class LDPoSChainModule {
         try {
           let txnTotal;
           if (multisigMemberAccounts) {
-            txnTotal = await this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, accountTxn, true);
+            txnTotal = await this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, currentTxn, true);
           } else {
-            txnTotal = await this.verifySigTransactionAuthorization(senderAccount, accountTxn, true);
+            txnTotal = await this.verifySigTransactionAuthorization(senderAccount, currentTxn, true);
           }
 
-          if (accountStream.transactionInfoMap.has(accountTxn.id)) {
-            verificationError = new Error(`Transaction ${accountTxn.id} has already been received before`);
+          if (accountStream.transactionInfoMap.has(currentTxn.id)) {
+            verificationError = new Error(`Transaction ${currentTxn.id} has already been received before`);
           } else {
             // Subtract valid transaction total from the in-memory senderAccount balance since it
             // may affect the verification of the next transaction in the stream.
@@ -2625,80 +2625,80 @@ module.exports = class LDPoSChainModule {
               // Check that the multisig transaction is valid with respect to existing pending transactions so that it does
               // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
               // due to the stateful nature of the signature scheme.
-              for (let txnSignature of accountTxn.signatures) {
-                let { signerAddress, multisigPublicKey } = txnSignature;
+              for (let txnSignature of currentTxn.signatures) {
+                let { signerAddress, multisigPublicKey, nextMultisigKeyIndex } = txnSignature;
                 let memberAccount = multisigMemberAccounts[signerAddress];
 
                 if (multisigPublicKey === memberAccount.nextMultisigPublicKey) {
                   // If the transaction was signed with the next public key.
                   if (
                     memberAccount.highestMultisigPublicKeyIndex != null &&
-                    accountTxn.nextMultisigKeyIndex <= memberAccount.highestMultisigPublicKeyIndex
+                    nextMultisigKeyIndex <= memberAccount.highestMultisigPublicKeyIndex
                   ) {
                     throw new Error(
                       `Multisig transaction ${
-                        accountTxn.id
+                        currentTxn.id
                       } nextMultisigKeyIndex ${
-                        accountTxn.nextMultisigKeyIndex
+                        nextMultisigKeyIndex
                       } of member ${
                         signerAddress
-                      } was too low relative to the nextMultisigKeyIndex of other pending transactions - Check that the member signed transactions in the correct order`
+                      } was too low relative to the nextMultisigKeyIndex of other pending transactions`
                     );
                   }
                   if (
                     memberAccount.lowestNextMultisigPublicKeyIndex == null ||
-                    accountTxn.nextMultisigKeyIndex < memberAccount.lowestNextMultisigPublicKeyIndex
+                    nextMultisigKeyIndex < memberAccount.lowestNextMultisigPublicKeyIndex
                   ) {
-                    memberAccount.lowestNextMultisigPublicKeyIndex = accountTxn.nextMultisigKeyIndex;
+                    memberAccount.lowestNextMultisigPublicKeyIndex = nextMultisigKeyIndex;
                   }
                 } else {
                   // If the transaction was signed with the current public key.
                   if (
                     memberAccount.lowestNextMultisigPublicKeyIndex != null &&
-                    accountTxn.nextMultisigKeyIndex >= memberAccount.lowestNextMultisigPublicKeyIndex
+                    nextMultisigKeyIndex >= memberAccount.lowestNextMultisigPublicKeyIndex
                   ) {
                     throw new Error(
                       `Multisig transaction ${
-                        accountTxn.id
+                        currentTxn.id
                       } nextMultisigKeyIndex ${
-                        accountTxn.nextMultisigKeyIndex
+                        nextMultisigKeyIndex
                       } of member ${
                         signerAddress
-                      } was too high relative to the nextMultisigKeyIndex of other pending transactions - Check that the member signed transactions in the correct order`
+                      } was too high relative to the nextMultisigKeyIndex of other pending transactions`
                     );
                   }
                   if (
                     memberAccount.highestMultisigPublicKeyIndex == null ||
-                    accountTxn.nextSigKeyIndex > memberAccount.highestMultisigPublicKeyIndex
+                    nextMultisigKeyIndex > memberAccount.highestMultisigPublicKeyIndex
                   ) {
-                    memberAccount.highestMultisigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                    memberAccount.highestMultisigPublicKeyIndex = nextMultisigKeyIndex;
                   }
                 }
               }
-              this.trackPendingMultisigTransactionSigners(accountTxn);
+              this.trackPendingMultisigTransactionSigners(currentTxn);
             } else {
               // Do not allow an account to change their multisig public key while there are pending multisig transactions in the queue
               // which depend on that account as a signer.
               if (
-                accountTxn.type === 'registerMultisigDetails' &&
-                this.pendingSignerMultisigTransactions[accountTxn.senderAddress]
+                currentTxn.type === 'registerMultisigDetails' &&
+                this.pendingSignerMultisigTransactions[currentTxn.senderAddress]
               ) {
                 throw new Error(
                   `Transaction ${
-                    accountTxn.id
+                    currentTxn.id
                   } of type registerMultisigDetails from the account ${
-                    accountTxn.senderAddress
+                    currentTxn.senderAddress
                   } could not be processed while there were pending multisig transactions with that account as a signer`
                 );
               }
 
               // Do not allow an account to change their sig public key while there are pending sig transactions in the queue from that account.
-              if (accountTxn.type === 'registerSigDetails' && accountStream.transactionInfoMap.size) {
+              if (currentTxn.type === 'registerSigDetails' && accountStream.transactionInfoMap.size) {
                 throw new Error(
                   `Transaction ${
-                    accountTxn.id
+                    currentTxn.id
                   } of type registerSigDetails from the account ${
-                    accountTxn.senderAddress
+                    currentTxn.senderAddress
                   } could not be processed while there were pending transactions from that account`
                 );
               }
@@ -2706,57 +2706,57 @@ module.exports = class LDPoSChainModule {
               // Check that the sig transaction is valid with respect to existing pending transactions so that it does
               // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
               // due to the stateful nature of the signature scheme.
-              if (accountTxn.sigPublicKey === senderAccount.nextSigPublicKey) {
+              if (currentTxn.sigPublicKey === senderAccount.nextSigPublicKey) {
                 // If the transaction was signed with the next public key.
                 if (
                   senderAccount.highestSigPublicKeyIndex != null &&
-                  accountTxn.nextSigKeyIndex <= senderAccount.highestSigPublicKeyIndex
+                  currentTxn.nextSigKeyIndex <= senderAccount.highestSigPublicKeyIndex
                 ) {
                   throw new Error(
                     `Transaction ${
-                      accountTxn.id
+                      currentTxn.id
                     } nextSigKeyIndex ${
-                      accountTxn.nextSigKeyIndex
-                    } was too low relative to the nextSigKeyIndex of other pending transactions - Check that transactions were signed in the correct order`
+                      currentTxn.nextSigKeyIndex
+                    } was too low relative to the nextSigKeyIndex of other pending transactions`
                   );
                 }
                 if (
                   senderAccount.lowestNextSigPublicKeyIndex == null ||
-                  accountTxn.nextSigKeyIndex < senderAccount.lowestNextSigPublicKeyIndex
+                  currentTxn.nextSigKeyIndex < senderAccount.lowestNextSigPublicKeyIndex
                 ) {
-                  senderAccount.lowestNextSigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                  senderAccount.lowestNextSigPublicKeyIndex = currentTxn.nextSigKeyIndex;
                 }
               } else {
                 // If the transaction was signed with the current public key.
                 if (
                   senderAccount.lowestNextSigPublicKeyIndex != null &&
-                  accountTxn.nextSigKeyIndex >= senderAccount.lowestNextSigPublicKeyIndex
+                  currentTxn.nextSigKeyIndex >= senderAccount.lowestNextSigPublicKeyIndex
                 ) {
                   throw new Error(
                     `Transaction ${
-                      accountTxn.id
+                      currentTxn.id
                     } nextSigKeyIndex ${
-                      accountTxn.nextSigKeyIndex
-                    } was too high relative to the nextSigKeyIndex of other pending transactions - Check that transactions were signed in the correct order`
+                      currentTxn.nextSigKeyIndex
+                    } was too high relative to the nextSigKeyIndex of other pending transactions`
                   );
                 }
                 if (
                   senderAccount.highestSigPublicKeyIndex == null ||
-                  accountTxn.nextSigKeyIndex > senderAccount.highestSigPublicKeyIndex
+                  currentTxn.nextSigKeyIndex > senderAccount.highestSigPublicKeyIndex
                 ) {
-                  senderAccount.highestSigPublicKeyIndex = accountTxn.nextSigKeyIndex;
+                  senderAccount.highestSigPublicKeyIndex = currentTxn.nextSigKeyIndex;
                 }
               }
             }
 
-            this.pendingTransactionMap.set(accountTxn.id, accountTxn);
-            accountStream.transactionInfoMap.set(accountTxn.id, {
-              transaction: accountTxn,
+            this.pendingTransactionMap.set(currentTxn.id, currentTxn);
+            accountStream.transactionInfoMap.set(currentTxn.id, {
+              transaction: currentTxn,
               receivedTimestamp: Date.now()
             });
 
             if (propagationMode !== PROPAGATION_MODE_NONE) {
-              this.propagateTransaction(accountTxn, propagationMode === PROPAGATION_MODE_DELAYED);
+              this.propagateTransaction(currentTxn, propagationMode === PROPAGATION_MODE_DELAYED);
             }
           }
         } catch (error) {
