@@ -1338,7 +1338,7 @@ describe('Functional tests', async () => {
           newSigPublicKey: clientForger.sigPublicKey,
           newNextSigPublicKey: clientForger.nextSigPublicKey,
           newNextSigKeyIndex: clientForger.sigKeyIndex,
-          fee: '10000000',
+          fee: '500000000',
           timestamp: 100000,
           message: ''
         });
@@ -1397,7 +1397,7 @@ describe('Functional tests', async () => {
           newSigPublicKey: clientForger.sigPublicKey,
           newNextSigPublicKey: clientForger.nextSigPublicKey,
           newNextSigKeyIndex: -1,
-          fee: '10000000',
+          fee: '500000000',
           timestamp: 100000,
           message: ''
         });
@@ -1472,7 +1472,7 @@ describe('Functional tests', async () => {
           newMultisigPublicKey: clientForger.multisigPublicKey,
           newNextMultisigPublicKey: clientForger.nextMultisigPublicKey,
           newNextMultisigKeyIndex: clientForger.multisigKeyIndex,
-          fee: '10000000',
+          fee: '500000000',
           timestamp: 100000,
           message: ''
         });
@@ -1508,7 +1508,7 @@ describe('Functional tests', async () => {
           newMultisigPublicKey: clientForger.sigPublicKey,
           newNextMultisigPublicKey: clientForger.nextSigPublicKey,
           newNextMultisigKeyIndex: -1,
-          fee: '10000000',
+          fee: '500000000',
           timestamp: 100000,
           message: ''
         });
@@ -1583,7 +1583,7 @@ describe('Functional tests', async () => {
           newForgingPublicKey: clientForger.forgingPublicKey,
           newNextForgingPublicKey: clientForger.nextForgingPublicKey,
           newNextForgingKeyIndex: clientForger.forgingKeyIndex,
-          fee: '10000000',
+          fee: '100000000',
           timestamp: 100000,
           message: ''
         });
@@ -1619,7 +1619,7 @@ describe('Functional tests', async () => {
           newForgingPublicKey: clientForger.sigPublicKey,
           newNextForgingPublicKey: clientForger.nextSigPublicKey,
           newNextForgingKeyIndex: -1,
-          fee: '10000000',
+          fee: '100000000',
           timestamp: 100000,
           message: ''
         });

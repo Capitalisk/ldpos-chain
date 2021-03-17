@@ -2786,7 +2786,7 @@ module.exports = class LDPoSChainModule {
       try {
         await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
       } catch (error) {
-        this.logger.warn(error);
+        this.logger.debug(error);
       }
     });
   }
