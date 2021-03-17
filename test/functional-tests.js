@@ -1384,7 +1384,7 @@ describe('Functional tests', async () => {
           }
         });
         assert.equal(caughtError, null);
-        assert.equal(account.balance, '97980000000');
+        assert.equal(account.balance, '97490000000');
       });
 
     });
