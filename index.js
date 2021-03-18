@@ -424,8 +424,13 @@ module.exports = class LDPoSChainModule {
         },
         isPublic: true
       },
-      getModuleOptions: {
-        handler: async action => this.options
+      getDelegate: {
+        handler: async action => {
+          validateWalletAddress('walletAddress', action.params, this.networkSymbol);
+          let { walletAddress } = action.params;
+          return this.dal.getDelegate(walletAddress);
+        },
+        isPublic: true
       },
       getDelegatesByVoteWeight: {
         handler: async action => {
@@ -469,6 +474,9 @@ module.exports = class LDPoSChainModule {
           };
         },
         isPublic: true
+      },
+      getModuleOptions: {
+        handler: async action => this.options
       }
     };
   }
