@@ -517,16 +517,20 @@ module.exports = class LDPoSChainModule {
       maxConsecutiveBlockFetchFailures
     } = options;
 
+    let addedBlockCount = 0;
     let now = Date.now();
     if (
       Math.floor(this.lastProcessedBlock.timestamp / forgingInterval) >= Math.floor(now / forgingInterval)
     ) {
-      return this.lastProcessedBlock.height;
+      return {
+        lastHeight: this.lastProcessedBlock.height,
+        addedBlockCount
+      };
     }
 
     this.logger.info('Attempting to catch up with the network');
 
-    let consecutiveFailureCounter = 0;
+    let consecutiveFailureCount = 0;
 
     while (true) {
       if (!this.isActive) {
@@ -564,7 +568,7 @@ module.exports = class LDPoSChainModule {
             } blocks`
           );
         }
-        consecutiveFailureCounter = 0;
+        consecutiveFailureCount = 0;
       } catch (error) {
         this.logger.warn(
           new Error(
@@ -573,7 +577,7 @@ module.exports = class LDPoSChainModule {
             }`
           )
         );
-        if (++consecutiveFailureCounter > maxConsecutiveBlockFetchFailures) {
+        if (++consecutiveFailureCount > maxConsecutiveBlockFetchFailures) {
           break;
         }
         await this.wait(fetchBlockPause);
@@ -658,6 +662,7 @@ module.exports = class LDPoSChainModule {
             throw new Error(`Block ${block.id} did not meet processing requirements`);
           }
           await this.processBlock(block, senderAccountDetails, true);
+          addedBlockCount++;
         } catch (error) {
           this.logger.warn(
             `Failed to process block ${
@@ -674,7 +679,10 @@ module.exports = class LDPoSChainModule {
     }
 
     this.logger.info('Stopped catching up with the network');
-    return this.lastProcessedBlock.height;
+    return {
+      lastHeight: this.lastProcessedBlock.height,
+      addedBlockCount
+    };
   }
 
   async receiveLastBlockInfo(timeout) {
@@ -2151,7 +2159,7 @@ module.exports = class LDPoSChainModule {
           let requiredBlockSignatureCountDuringCatchUp = Math.min(blockSignerMajorityCount, this.blockSignaturesToFetch);
 
           // If the node is already on the latest network height, it will just return it.
-          this.networkHeight = await this.catchUpWithNetwork({
+          let { lastHeight, addedBlockCount } = await this.catchUpWithNetwork({
             forgingInterval,
             fetchBlockLimit,
             fetchBlockPause,
@@ -2159,13 +2167,20 @@ module.exports = class LDPoSChainModule {
             requiredBlockSignatureCount: requiredBlockSignatureCountDuringCatchUp,
             maxConsecutiveBlockFetchFailures
           });
+          this.networkHeight = lastHeight;
           this.nodeHeight = this.networkHeight;
-          let nextHeight = this.networkHeight + 1;
 
           if (!this.isActive) {
             this.resolveUnload && this.resolveUnload();
             break;
           }
+
+          if (addedBlockCount) {
+            activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
+            blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
+          }
+
+          let nextHeight = this.networkHeight + 1;
 
           await this.waitUntilNextBlockTimeSlot({
             forgingInterval,
