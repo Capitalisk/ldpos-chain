@@ -692,7 +692,7 @@ module.exports = class LDPoSChainModule {
       lastBlock.signatures.map(blockSignature => blockSignature.signerAddress)
     );
     if (signerSet.size >= requiredCount) {
-      return;
+      return lastBlock.signatures;
     }
     while (true) {
       let startTime = Date.now();
