@@ -45,6 +45,7 @@ const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
 const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 10000;
+const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
 const DEFAULT_PROPAGATION_TIMEOUT = 5000;
 const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
@@ -2093,11 +2094,13 @@ module.exports = class LDPoSChainModule {
           walletAddress: options.forgingWalletAddress,
           forgingKeyIndex: LDPOS_FORGING_KEY_INDEX == null ? null : Number(LDPOS_FORGING_KEY_INDEX)
         });
-        let wasKeyIndexUpdated = await ldposClient.syncKeyIndex('forging');
-        if (wasKeyIndexUpdated) {
-          this.logger.info(
-            `The delegate forging key index was shifted to ${ldposClient.forgingKeyIndex}`
-          );
+        if (this.autoSyncForgingKeyIndex) {
+          let wasKeyIndexUpdated = await ldposClient.syncKeyIndex('forging');
+          if (wasKeyIndexUpdated) {
+            this.logger.info(
+              `The delegate forging key index was shifted to ${ldposClient.forgingKeyIndex} during launch`
+            );
+          }
         }
       } catch (error) {
         throw new Error(
@@ -2176,6 +2179,16 @@ module.exports = class LDPoSChainModule {
           }
 
           if (addedBlockCount) {
+            if (forgingPassphrase && this.autoSyncForgingKeyIndex) {
+              let wasKeyIndexUpdated = await this.ldposClient.syncKeyIndex('forging');
+              if (wasKeyIndexUpdated) {
+                this.logger.info(
+                  `The delegate forging key index was shifted to ${
+                    this.ldposClient.forgingKeyIndex
+                  } after catching up with the network`
+                );
+              }
+            }
             activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
             blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
           }
@@ -3128,6 +3141,7 @@ module.exports = class LDPoSChainModule {
       fetchBlockEndConfirmations: DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS,
       forgingBlockBroadcastDelay: DEFAULT_FORGING_BLOCK_BROADCAST_DELAY,
       forgingSignatureBroadcastDelay: DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY,
+      autoSyncForgingKeyIndex: DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX,
       propagationTimeout: DEFAULT_PROPAGATION_TIMEOUT,
       propagationRandomness: DEFAULT_PROPAGATION_RANDOMNESS,
       timePollInterval: DEFAULT_TIME_POLL_INTERVAL,
@@ -3174,6 +3188,7 @@ module.exports = class LDPoSChainModule {
     this.blockSignaturesToProvide = this.options.blockSignaturesToProvide;
     this.blockSignaturesToFetch = this.options.blockSignaturesToFetch;
     this.blockSignaturesIndicator = this.options.blockSignaturesIndicator;
+    this.autoSyncForgingKeyIndex = this.options.autoSyncForgingKeyIndex;
     this.propagationRandomness = this.options.propagationRandomness;
     this.minMultisigMembers = this.options.minMultisigMembers;
     this.maxMultisigMembers = this.options.maxMultisigMembers;
