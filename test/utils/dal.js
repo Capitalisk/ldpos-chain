@@ -424,7 +424,7 @@ class DAL {
       });
   }
 
-  async getInboundTransactions(walletAddress, fromTimestamp, limit, order) {
+  async getInboundTransactions(walletAddress, fromTimestamp, offset, limit, order) {
     let transactionList = this.sortByProperty(Object.values(this.transactions), 'timestamp', order);
 
     let inboundTransactions = [];
@@ -439,17 +439,14 @@ class DAL {
         )
       ) {
         inboundTransactions.push(transaction);
-        if (inboundTransactions.length >= limit) {
-          break;
-        }
       }
     }
     return inboundTransactions.map((transaction) => {
       return {...transaction};
-    });
+    }).slice(offset, offset + limit);
   }
 
-  async getOutboundTransactions(walletAddress, fromTimestamp, limit, order) {
+  async getOutboundTransactions(walletAddress, fromTimestamp, offset, limit, order) {
     let transactionList = this.sortByProperty(Object.values(this.transactions), 'timestamp', order);
     let outboundTransactions = [];
     for (let transaction of transactionList) {
@@ -463,14 +460,11 @@ class DAL {
         )
       ) {
         outboundTransactions.push(transaction);
-        if (outboundTransactions.length >= limit) {
-          break;
-        }
       }
     }
     return outboundTransactions.map((transaction) => {
       return {...transaction};
-    });
+    }).slice(offset, offset + limit);
   }
 
   async getInboundTransactionsFromBlock(walletAddress, blockId) {

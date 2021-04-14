@@ -67,6 +67,8 @@ const DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO = .5;
 const DEFAULT_API_LIMIT = 100;
 const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
+const DEFAULT_MAX_PUBLIC_API_OFFSET = 1000;
+const DEFAULT_MAX_PRIVATE_API_OFFSET = 10000;
 
 const PROPAGATION_MODE_DELAYED = 'delayed';
 const PROPAGATION_MODE_IMMEDIATE = 'immediate';
@@ -167,8 +169,9 @@ module.exports = class LDPoSChainModule {
       },
       getAccountsByBalance: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -223,9 +226,10 @@ module.exports = class LDPoSChainModule {
       },
       getOutboundPendingTransactions: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           let { walletAddress, offset, limit } = action.params;
           offset = this.sanitizeOffset(offset);
@@ -264,8 +268,9 @@ module.exports = class LDPoSChainModule {
       },
       getTransactionsByTimestamp: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -278,41 +283,48 @@ module.exports = class LDPoSChainModule {
       },
       getInboundTransactions: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
           if (action.params.fromTimestamp != null) {
             validateTimestamp('fromTimestamp', action.params);
           }
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
-          let { walletAddress, fromTimestamp, limit, order } = action.params;
+          let { walletAddress, fromTimestamp, offset, limit, order } = action.params;
+          offset = this.sanitizeOffset(offset);
           limit = this.sanitizeLimit(limit);
           order = this.sanitizeOrder(order, 'asc');
-          return this.dal.getInboundTransactions(walletAddress, fromTimestamp, limit, order);
+          return this.dal.getInboundTransactions(walletAddress, fromTimestamp, offset, limit, order);
         },
         isPublic: true
       },
       getOutboundTransactions: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
           if (action.params.fromTimestamp != null) {
             validateTimestamp('fromTimestamp', action.params);
           }
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
-          let { walletAddress, fromTimestamp, limit, order } = action.params;
+          let { walletAddress, fromTimestamp, offset, limit, order } = action.params;
+          offset = this.sanitizeOffset(offset);
           limit = this.sanitizeLimit(limit);
           order = this.sanitizeOrder(order, 'asc');
-          return this.dal.getOutboundTransactions(walletAddress, fromTimestamp, limit, order);
+          return this.dal.getOutboundTransactions(walletAddress, fromTimestamp, offset, limit, order);
         },
         isPublic: true
       },
       getTransactionsFromBlock: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateBlockId('blockId', action.params);
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           let { blockId, offset, limit } = action.params;
           offset = this.sanitizeOffset(offset);
@@ -413,8 +425,9 @@ module.exports = class LDPoSChainModule {
       },
       getBlocksByTimestamp: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -435,8 +448,9 @@ module.exports = class LDPoSChainModule {
       },
       getDelegatesByVoteWeight: {
         handler: async action => {
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
-          validateOffset('offset', action.params);
+          validateOffset('offset', action.params, maxOffset);
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -3164,7 +3178,9 @@ module.exports = class LDPoSChainModule {
       catchUpConsensusMinRatio: DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO,
       apiLimit: DEFAULT_API_LIMIT,
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
-      maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT
+      maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
+      maxPublicAPIOffset: DEFAULT_MAX_PUBLIC_API_OFFSET,
+      maxPrivateAPIOffset: DEFAULT_MAX_PRIVATE_API_OFFSET
     };
     this.options = {...defaultOptions, ...options};
 
@@ -3205,6 +3221,8 @@ module.exports = class LDPoSChainModule {
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
     this.maxPrivateAPILimit = this.options.maxPrivateAPILimit;
+    this.maxPublicAPIOffset = this.options.maxPublicAPIOffset;
+    this.maxPrivateAPIOffset = this.options.maxPrivateAPIOffset;
 
     if (this.minForgerBlockSignatureRatio < 0.5) {
       throw new Error(

@@ -65,14 +65,14 @@ function validatePublicKey(propertyName, packet) {
   }
 }
 
-function validateOffset(propertyName, packet) {
+function validateOffset(propertyName, packet, maxOffset) {
   let offset = packet[propertyName];
-  if (offset != null && (!Number.isInteger(offset) || offset < 0 || offset > Number.MAX_SAFE_INTEGER)) {
+  if (offset != null && (!Number.isInteger(offset) || offset < 0 || offset > maxOffset)) {
     throw new Error(
       `If specified, offset in ${
         propertyName
       } must be an integer number between 0 and ${
-        Number.MAX_SAFE_INTEGER
+        maxOffset
       } inclusive`
     );
   }
