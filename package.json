@@ -18,7 +18,7 @@
     "dpos"
   ],
   "author": "Jonathan Gros-Dubois",
-  "license": "GPL-3.0",
+  "license": "AGPL-3.0",
   "dependencies": {
     "bip39": "^3.0.3",
     "ldpos-client": "^7.1.0",
