@@ -1,6 +1,6 @@
 {
   "name": "ldpos-chain",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "LDPoS chain module",
   "main": "index.js",
   "scripts": {
