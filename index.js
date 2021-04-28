@@ -1674,6 +1674,10 @@ module.exports = class LDPoSChainModule {
     return blockInfo;
   }
 
+  hasDelegateChangedForgingKeys(block, delegateAccount) {
+    return block.forgingPublicKey !== delegateAccount.forgingPublicKey || delegateAccount.nextForgingPublicKey == null;
+  }
+
   async verifyForgedBlock(block, lastBlock) {
     if (block.id === lastBlock.id) {
       throw new Error(`Block ${block.id} has already been received`);
@@ -1739,7 +1743,7 @@ module.exports = class LDPoSChainModule {
     let senderAccountDetails = await this.verifyBlockTransactions(block);
     return {
       senderAccountDetails,
-      delegateChangedKeys: block.forgingPublicKey !== targetDelegateAccount.forgingPublicKey
+      delegateChangedKeys: this.hasDelegateChangedForgingKeys(block, targetDelegateAccount)
     };
   }
 
@@ -2311,7 +2315,7 @@ module.exports = class LDPoSChainModule {
               this.dal.getAccount(forgingWalletAddress)
             ]);
             block = forgedBlock;
-            delegateChangedKeys = block.forgingPublicKey !== forgerAccount.forgingPublicKey;
+            delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
 
             this.lastReceivedSignerAddressSet.clear();
             this.lastReceivedBlock = block;
