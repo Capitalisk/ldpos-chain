@@ -2088,7 +2088,6 @@ module.exports = class LDPoSChainModule {
 
   async startBlockProcessingLoop() {
     let options = this.options;
-    let channel = this.channel;
 
     let {
       forgingInterval,
@@ -2108,354 +2107,266 @@ module.exports = class LDPoSChainModule {
       maxConsecutiveBlockFetchFailures
     } = options;
 
-    this.cryptoClientLibPath = options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
-    let { createClient } = require(this.cryptoClientLibPath);
-
-    this.ldposClient = createClient({
-      adapter: this.dal,
-      store: this.dal,
-      networkSymbol: this.networkSymbol,
-      verifyNetwork: false
-    });
-
-    this.ldposForgingClients = {};
-    let forgerInfoList = options.forgingCredentials || [];
-
     try {
-      await Promise.all(
-        forgerInfoList.map(async (forgerInfo) => {
-          let forgingPassphrase = this.getForgingPassphrase(forgerInfo);
-          let forgingClient = createClient({
-            adapter: this.dal,
-            store: this.dal,
-            networkSymbol: this.networkSymbol,
-            verifyNetwork: false
-          });
-          await forgingClient.connect({
-            passphrase: forgingPassphrase,
-            walletAddress: forgerInfo.walletAddress,
-            forgingKeyIndex: LDPOS_FORGING_KEY_INDEX == null ? null : Number(LDPOS_FORGING_KEY_INDEX)
-          });
-          let forgingWalletAddress = forgingClient.getWalletAddress();
+      while (true) {
+        let activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
+        let blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
+        let requiredBlockSignatureCountDuringCatchUp = Math.min(blockSignerMajorityCount, this.blockSignaturesToFetch);
 
+        // If the node is already on the latest network height, it will just return it.
+        let { lastHeight, addedBlockCount } = await this.catchUpWithNetwork({
+          forgingInterval,
+          fetchBlockLimit,
+          fetchBlockPause,
+          fetchBlockEndConfirmations,
+          requiredBlockSignatureCount: requiredBlockSignatureCountDuringCatchUp,
+          maxConsecutiveBlockFetchFailures
+        });
+        this.networkHeight = lastHeight;
+        this.nodeHeight = this.networkHeight;
+
+        if (!this.isActive) {
+          this.resolveUnload && this.resolveUnload();
+          break;
+        }
+
+        if (addedBlockCount) {
           if (this.autoSyncForgingKeyIndex) {
-            let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
-            if (wasKeyIndexUpdated) {
-              this.logger.info(
-                `The forging key index of delegate ${
-                  forgingWalletAddress
-                } was shifted to ${
-                  forgingClient.forgingKeyIndex
-                } during launch`
-              );
-            }
-          }
-          this.ldposForgingClients[forgingWalletAddress] = forgingClient;
-        })
-      );
-    } catch (error) {
-      throw new Error(
-        `Failed to initialize forging because of error: ${error.message}`
-      );
-    }
-
-    try {
-      await this.fetchTopActiveDelegates();
-    } catch (error) {
-      throw new Error(
-        `Failed to load top active delegates because of error: ${error.message}`
-      );
-    }
-
-    this.nodeHeight = await this.dal.getMaxBlockHeight();
-    try {
-      this.lastProcessedBlock = await this.dal.getSignedBlockAtHeight(this.nodeHeight);
-    } catch (error) {
-      if (error.name !== 'BlockDidNotExistError') {
-        throw new Error(
-          `Failed to load last processed block because of error: ${error.message}`
-        );
-      }
-    }
-    if (!this.lastProcessedBlock) {
-      this.lastProcessedBlock = {
-        height: 0,
-        timestamp: 0,
-        transactions: [],
-        previousBlockId: null,
-        forgerAddress: null,
-        forgingPublicKey: null,
-        nextForgingPublicKey: null,
-        id: null,
-        forgerSignature: null,
-        signatures: []
-      };
-    }
-    this.lastReceivedBlock = this.lastProcessedBlock;
-    this.lastFullySignedBlock = this.lastProcessedBlock;
-
-    (async () => {
-      try {
-        while (true) {
-          let activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
-          let blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
-          let requiredBlockSignatureCountDuringCatchUp = Math.min(blockSignerMajorityCount, this.blockSignaturesToFetch);
-
-          // If the node is already on the latest network height, it will just return it.
-          let { lastHeight, addedBlockCount } = await this.catchUpWithNetwork({
-            forgingInterval,
-            fetchBlockLimit,
-            fetchBlockPause,
-            fetchBlockEndConfirmations,
-            requiredBlockSignatureCount: requiredBlockSignatureCountDuringCatchUp,
-            maxConsecutiveBlockFetchFailures
-          });
-          this.networkHeight = lastHeight;
-          this.nodeHeight = this.networkHeight;
-
-          if (!this.isActive) {
-            this.resolveUnload && this.resolveUnload();
-            break;
-          }
-
-          if (addedBlockCount) {
-            if (this.autoSyncForgingKeyIndex) {
-              await Promise.all(
-                Object.keys(this.ldposForgingClients).map(async (forgerAddress) => {
-                  let forgingClient = this.ldposForgingClients[forgerAddress];
-                  let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
-                  if (wasKeyIndexUpdated) {
-                    this.logger.info(
-                      `The forging key index of delegate ${
-                        forgerAddress
-                      } was shifted to ${
-                        forgingClient.forgingKeyIndex
-                      } after catching up with the network`
-                    );
-                  }
-                })
-              );
-            }
-            activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
-            blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
-          }
-
-          let nextHeight = this.networkHeight + 1;
-
-          await this.waitUntilNextBlockTimeSlot({
-            forgingInterval,
-            timePollInterval
-          });
-
-          if (!this.isActive) {
-            this.resolveUnload && this.resolveUnload();
-            break;
-          }
-
-          let blockTimestamp = this.getCurrentBlockTimeSlot(forgingInterval);
-          let currentForgingDelegateAddress = this.getCurrentForgingDelegateAddress();
-          let block;
-          let senderAccountDetails;
-          let delegateChangedKeys;
-
-          if (this.ldposForgingClients[currentForgingDelegateAddress]) {
-            let validTransactions = [];
-            let senderAddressList = Object.keys(this.pendingTransactionStreams);
-
-            let senderAccountDetailsResultList = await Promise.all(
-              senderAddressList.map(async (senderAddress) => {
-                let senderAccountInfo;
-                let senderAccount;
-                let multisigMemberAccounts;
-                try {
-                  let result = await this.getTransactionSenderAccountDetails(senderAddress);
-                  senderAccount = result.senderAccount;
-                  multisigMemberAccounts = result.multisigMemberAccounts;
-                  senderAccountInfo = {
-                    senderAccount: {
-                      ...senderAccount
-                    },
-                    multisigMemberAccounts: {
-                      ...multisigMemberAccounts
-                    }
-                  };
-                } catch (err) {
-                  let error = new Error(
-                    `Failed to fetch sender account ${
-                      senderAddress
-                    } for transaction verification as part of block forging because of error: ${
-                      err.message
-                    }`
+            await Promise.all(
+              Object.keys(this.ldposForgingClients).map(async (forgerAddress) => {
+                let forgingClient = this.ldposForgingClients[forgerAddress];
+                let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
+                if (wasKeyIndexUpdated) {
+                  this.logger.info(
+                    `The forging key index of delegate ${
+                      forgerAddress
+                    } was shifted to ${
+                      forgingClient.forgingKeyIndex
+                    } after catching up with the network`
                   );
-                  this.logger.error(error);
-                  return null;
                 }
-
-                let senderTxnStream = this.pendingTransactionStreams[senderAddress];
-                if (!senderTxnStream) {
-                  return null;
-                }
-                let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
-                let pendingTxnList = [...pendingTxnInfoMap.values()].map(txnPacket => txnPacket.transaction);
-
-                for (let pendingTxn of pendingTxnList) {
-                  try {
-                    let txnTotal;
-                    if (multisigMemberAccounts) {
-                      txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true);
-                    } else {
-                      txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true);
-                    }
-
-                    // Subtract valid transaction total from the in-memory senderAccount balance since it
-                    // may affect the verification of the next transaction in the stream.
-                    senderAccount.balance -= txnTotal;
-                    validTransactions.push(pendingTxn);
-                  } catch (error) {
-                    this.logger.debug(
-                      `Excluded transaction ${
-                        pendingTxn.id
-                      } from block because of error: ${
-                        error.message
-                      }`
-                    );
-                    this.untrackPendingTransaction(pendingTxn);
-                  }
-                }
-                return senderAccountInfo;
               })
             );
+          }
+          activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
+          blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
+        }
 
-            let senderAccountDetailsList = senderAccountDetailsResultList.filter(senderAccountDetails => senderAccountDetails);
-            senderAccountDetails = {};
-            for (let { senderAccount, multisigMemberAccounts } of senderAccountDetailsList) {
-              senderAccountDetails[senderAccount.address] = {
-                senderAccount,
-                multisigMemberAccounts
-              };
-            }
+        let nextHeight = this.networkHeight + 1;
 
-            let pendingTransactions = this.sortPendingTransactions(validTransactions);
-            let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
-            let [ forgedBlock, forgerAccount ] = await Promise.all([
-              this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
-              this.dal.getAccount(currentForgingDelegateAddress)
-            ]);
-            block = forgedBlock;
-            delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
+        await this.waitUntilNextBlockTimeSlot({
+          forgingInterval,
+          timePollInterval
+        });
 
-            this.lastReceivedSignerAddressSet.clear();
-            this.lastReceivedBlock = block;
-            this.logger.info(
-              `Forged block ${block.id} at height ${block.height} as forger ${currentForgingDelegateAddress}`
-            );
+        if (!this.isActive) {
+          this.resolveUnload && this.resolveUnload();
+          break;
+        }
 
-            await this.wait(forgingBlockBroadcastDelay);
-            try {
-              await this.broadcastBlock(block);
-            } catch (error) {
-              this.logger.error(error);
-            }
+        let blockTimestamp = this.getCurrentBlockTimeSlot(forgingInterval);
+        let currentForgingDelegateAddress = this.getCurrentForgingDelegateAddress();
+        let block;
+        let senderAccountDetails;
+        let delegateChangedKeys;
+
+        if (this.ldposForgingClients[currentForgingDelegateAddress]) {
+          let validTransactions = [];
+          let senderAddressList = Object.keys(this.pendingTransactionStreams);
+
+          let senderAccountDetailsResultList = await Promise.all(
+            senderAddressList.map(async (senderAddress) => {
+              let senderAccountInfo;
+              let senderAccount;
+              let multisigMemberAccounts;
+              try {
+                let result = await this.getTransactionSenderAccountDetails(senderAddress);
+                senderAccount = result.senderAccount;
+                multisigMemberAccounts = result.multisigMemberAccounts;
+                senderAccountInfo = {
+                  senderAccount: {
+                    ...senderAccount
+                  },
+                  multisigMemberAccounts: {
+                    ...multisigMemberAccounts
+                  }
+                };
+              } catch (err) {
+                let error = new Error(
+                  `Failed to fetch sender account ${
+                    senderAddress
+                  } for transaction verification as part of block forging because of error: ${
+                    err.message
+                  }`
+                );
+                this.logger.error(error);
+                return null;
+              }
+
+              let senderTxnStream = this.pendingTransactionStreams[senderAddress];
+              if (!senderTxnStream) {
+                return null;
+              }
+              let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
+              let pendingTxnList = [...pendingTxnInfoMap.values()].map(txnPacket => txnPacket.transaction);
+
+              for (let pendingTxn of pendingTxnList) {
+                try {
+                  let txnTotal;
+                  if (multisigMemberAccounts) {
+                    txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true);
+                  } else {
+                    txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true);
+                  }
+
+                  // Subtract valid transaction total from the in-memory senderAccount balance since it
+                  // may affect the verification of the next transaction in the stream.
+                  senderAccount.balance -= txnTotal;
+                  validTransactions.push(pendingTxn);
+                } catch (error) {
+                  this.logger.debug(
+                    `Excluded transaction ${
+                      pendingTxn.id
+                    } from block because of error: ${
+                      error.message
+                    }`
+                  );
+                  this.untrackPendingTransaction(pendingTxn);
+                }
+              }
+              return senderAccountInfo;
+            })
+          );
+
+          let senderAccountDetailsList = senderAccountDetailsResultList.filter(senderAccountDetails => senderAccountDetails);
+          senderAccountDetails = {};
+          for (let { senderAccount, multisigMemberAccounts } of senderAccountDetailsList) {
+            senderAccountDetails[senderAccount.address] = {
+              senderAccount,
+              multisigMemberAccounts
+            };
           }
 
+          let pendingTransactions = this.sortPendingTransactions(validTransactions);
+          let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
+          let [ forgedBlock, forgerAccount ] = await Promise.all([
+            this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
+            this.dal.getAccount(currentForgingDelegateAddress)
+          ]);
+          block = forgedBlock;
+          delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
+
+          this.lastReceivedSignerAddressSet.clear();
+          this.lastReceivedBlock = block;
+          this.logger.info(
+            `Forged block ${block.id} at height ${block.height} as forger ${currentForgingDelegateAddress}`
+          );
+
+          await this.wait(forgingBlockBroadcastDelay);
           try {
-            if (!block) {
-              // Will throw if block is not received in time.
-              try {
-                let blockInfo = await this.receiveLastBlockInfo(forgingBlockBroadcastDelay + propagationTimeout);
-                block = blockInfo.block;
-                senderAccountDetails = blockInfo.senderAccountDetails;
-                delegateChangedKeys = blockInfo.delegateChangedKeys;
-                this.logger.info(
-                  `Received valid block ${
-                    block.id
-                  } from delegate ${
-                    block.forgerAddress
-                  } with timestamp ${
-                    block.timestamp
-                  } and height ${
-                    block.height
-                  }`
-                );
-              } catch (error) {
-                this.logger.debug(
-                  `No valid block was received from delegate ${
-                    currentForgingDelegateAddress
-                  } with timestamp ${
-                    blockTimestamp
-                  } and height ${
-                    nextHeight
-                  }`
-                );
-                continue;
-              }
-            }
-
-            let forgingAddressList = Object.keys(this.ldposForgingClients);
-            for (let clientForgerAddress of forgingAddressList) {
-              if (clientForgerAddress !== currentForgingDelegateAddress) {
-                (async () => {
-                  try {
-                    let selfSignature = await this.signBlock(clientForgerAddress, block);
-                    this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
-                    await this.wait(forgingSignatureBroadcastDelay);
-                    if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
-                      throw new Error(
-                        `Refused to send signature for block ${
-                          block.id
-                        } because delegate ${
-                          block.forgerAddress
-                        } tried to double-forge`
-                      );
-                    }
-                    try {
-                      await this.verifyBlockSignature(block, selfSignature);
-                    } catch (error) {
-                      throw new Error(
-                        `Produced invalid delegate block signature - ${error.message}`
-                      );
-                    }
-                    this.verifiedBlockSignatureStream.write(selfSignature);
-                    await this.broadcastBlockSignature(selfSignature);
-                  } catch (error) {
-                    this.logger.error(error);
-                  }
-                })();
-              }
-            }
-
-            // Will throw if the required number of valid signatures cannot be gathered in time.
-            await this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout);
-            this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
-
-            // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
-            if (this.blockMeetsRequirements(block, delegateChangedKeys)) {
-              await this.processBlock(block, senderAccountDetails, false);
-              this.lastFullySignedBlock = block;
-
-              this.nodeHeight = nextHeight;
-              this.networkHeight = nextHeight;
-            } else {
-              this.logger.debug(
-                `Skipped processing block ${block.id} which contained less than the minimum amount of ${
-                  this.minTransactionsPerBlock
-                } transactions`
-              );
-              this.publishToChannel(`${this.alias}:chainChanges`, {
-                type: 'skipBlock',
-                block: this.simplifyBlock(block)
-              });
-            }
+            await this.broadcastBlock(block);
           } catch (error) {
-            if (this.isActive) {
-              this.logger.error(error);
-            }
+            this.logger.error(error);
           }
         }
-      } catch (error) {
-        this.logger.error(error);
+
+        try {
+          if (!block) {
+            // Will throw if block is not received in time.
+            try {
+              let blockInfo = await this.receiveLastBlockInfo(forgingBlockBroadcastDelay + propagationTimeout);
+              block = blockInfo.block;
+              senderAccountDetails = blockInfo.senderAccountDetails;
+              delegateChangedKeys = blockInfo.delegateChangedKeys;
+              this.logger.info(
+                `Received valid block ${
+                  block.id
+                } from delegate ${
+                  block.forgerAddress
+                } with timestamp ${
+                  block.timestamp
+                } and height ${
+                  block.height
+                }`
+              );
+            } catch (error) {
+              this.logger.debug(
+                `No valid block was received from delegate ${
+                  currentForgingDelegateAddress
+                } with timestamp ${
+                  blockTimestamp
+                } and height ${
+                  nextHeight
+                }`
+              );
+              continue;
+            }
+          }
+
+          let forgingAddressList = Object.keys(this.ldposForgingClients);
+          for (let clientForgerAddress of forgingAddressList) {
+            if (clientForgerAddress !== currentForgingDelegateAddress) {
+              (async () => {
+                try {
+                  let selfSignature = await this.signBlock(clientForgerAddress, block);
+                  this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
+                  await this.wait(forgingSignatureBroadcastDelay);
+                  if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
+                    throw new Error(
+                      `Refused to send signature for block ${
+                        block.id
+                      } because delegate ${
+                        block.forgerAddress
+                      } tried to double-forge`
+                    );
+                  }
+                  try {
+                    await this.verifyBlockSignature(block, selfSignature);
+                  } catch (error) {
+                    throw new Error(
+                      `Produced invalid delegate block signature - ${error.message}`
+                    );
+                  }
+                  this.verifiedBlockSignatureStream.write(selfSignature);
+                  await this.broadcastBlockSignature(selfSignature);
+                } catch (error) {
+                  this.logger.error(error);
+                }
+              })();
+            }
+          }
+
+          // Will throw if the required number of valid signatures cannot be gathered in time.
+          await this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout);
+          this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
+
+          // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
+          if (this.blockMeetsRequirements(block, delegateChangedKeys)) {
+            await this.processBlock(block, senderAccountDetails, false);
+            this.lastFullySignedBlock = block;
+
+            this.nodeHeight = nextHeight;
+            this.networkHeight = nextHeight;
+          } else {
+            this.logger.debug(
+              `Skipped processing block ${block.id} which contained less than the minimum amount of ${
+                this.minTransactionsPerBlock
+              } transactions`
+            );
+            this.publishToChannel(`${this.alias}:chainChanges`, {
+              type: 'skipBlock',
+              block: this.simplifyBlock(block)
+            });
+          }
+        } catch (error) {
+          if (this.isActive) {
+            this.logger.error(error);
+          }
+        }
       }
-    })();
+    } catch (error) {
+      this.logger.error(error);
+    }
   }
 
   async postTransaction(transaction) {
@@ -3267,7 +3178,7 @@ module.exports = class LDPoSChainModule {
       );
     }
 
-    this.genesis = require(options.genesisPath || DEFAULT_GENESIS_PATH);
+    this.genesis = require(this.options.genesisPath || DEFAULT_GENESIS_PATH);
     try {
       await this.dal.init({
         genesis: this.genesis
@@ -3321,6 +3232,93 @@ module.exports = class LDPoSChainModule {
         )
       );
     }
+
+    this.cryptoClientLibPath = this.options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
+    let { createClient } = require(this.cryptoClientLibPath);
+
+    this.ldposClient = createClient({
+      adapter: this.dal,
+      store: this.dal,
+      networkSymbol: this.networkSymbol,
+      verifyNetwork: false
+    });
+
+    this.ldposForgingClients = {};
+    let forgerInfoList = this.options.forgingCredentials || [];
+
+    try {
+      await Promise.all(
+        forgerInfoList.map(async (forgerInfo) => {
+          let forgingPassphrase = this.getForgingPassphrase(forgerInfo);
+          let forgingClient = createClient({
+            adapter: this.dal,
+            store: this.dal,
+            networkSymbol: this.networkSymbol,
+            verifyNetwork: false
+          });
+          await forgingClient.connect({
+            passphrase: forgingPassphrase,
+            walletAddress: forgerInfo.walletAddress,
+            forgingKeyIndex: LDPOS_FORGING_KEY_INDEX == null ? null : Number(LDPOS_FORGING_KEY_INDEX)
+          });
+          let forgingWalletAddress = forgingClient.getWalletAddress();
+
+          if (this.autoSyncForgingKeyIndex) {
+            let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
+            if (wasKeyIndexUpdated) {
+              this.logger.info(
+                `The forging key index of delegate ${
+                  forgingWalletAddress
+                } was shifted to ${
+                  forgingClient.forgingKeyIndex
+                } during launch`
+              );
+            }
+          }
+          this.ldposForgingClients[forgingWalletAddress] = forgingClient;
+        })
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize forging because of error: ${error.message}`
+      );
+    }
+
+    try {
+      await this.fetchTopActiveDelegates();
+    } catch (error) {
+      throw new Error(
+        `Failed to load top active delegates because of error: ${error.message}`
+      );
+    }
+
+    this.nodeHeight = await this.dal.getMaxBlockHeight();
+    try {
+      this.lastProcessedBlock = await this.dal.getSignedBlockAtHeight(this.nodeHeight);
+    } catch (error) {
+      if (error.name !== 'BlockDidNotExistError') {
+        throw new Error(
+          `Failed to load last processed block because of error: ${error.message}`
+        );
+      }
+    }
+    if (!this.lastProcessedBlock) {
+      this.lastProcessedBlock = {
+        height: 0,
+        timestamp: 0,
+        transactions: [],
+        previousBlockId: null,
+        forgerAddress: null,
+        forgingPublicKey: null,
+        nextForgingPublicKey: null,
+        id: null,
+        forgerSignature: null,
+        signatures: []
+      };
+    }
+    this.lastReceivedBlock = this.lastProcessedBlock;
+    this.lastFullySignedBlock = this.lastProcessedBlock;
+
     if (this.blockSignaturesToProvide >= this.forgerCount - 1) {
       moduleState.providesAllBlockSignatures = true;
     }
@@ -3329,18 +3327,11 @@ module.exports = class LDPoSChainModule {
       [this.alias]: moduleState
     });
 
-    try {
-      await this.startBlockProcessingLoop();
-    } catch (error) {
-      throw new Error(
-        `Failed to start the block processing loop because of error: ${error.message}`
-      );
-    }
-
     this.startPendingTransactionExpiryLoop();
     this.startTransactionPropagationLoop();
     this.startBlockPropagationLoop();
     this.startBlockSignaturePropagationLoop();
+    this.startBlockProcessingLoop();
 
     this.publishToChannel(`${this.alias}:bootstrap`);
   }
