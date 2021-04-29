@@ -1044,7 +1044,7 @@ module.exports = class LDPoSChainModule {
         let hasDelegate = await this.dal.hasDelegate(delegateAddress);
         if (!hasDelegate) {
           await this.dal.upsertDelegate({
-            delegateAddress,
+            address: delegateAddress,
             voteWeight: '0'
           });
         }
