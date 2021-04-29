@@ -2346,7 +2346,9 @@ module.exports = class LDPoSChainModule {
 
             this.lastReceivedSignerAddressSet.clear();
             this.lastReceivedBlock = block;
-            this.logger.info(`Forged block ${block.id} at height ${block.height}`);
+            this.logger.info(
+              `Forged block ${block.id} at height ${block.height} as forger ${currentForgingDelegateAddress}`
+            );
 
             await this.wait(forgingBlockBroadcastDelay);
             try {
