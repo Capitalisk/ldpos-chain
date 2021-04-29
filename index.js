@@ -3329,10 +3329,6 @@ module.exports = class LDPoSChainModule {
       [this.alias]: moduleState
     });
 
-    this.startPendingTransactionExpiryLoop();
-    this.startTransactionPropagationLoop();
-    this.startBlockPropagationLoop();
-    this.startBlockSignaturePropagationLoop();
     try {
       await this.startBlockProcessingLoop();
     } catch (error) {
@@ -3340,6 +3336,11 @@ module.exports = class LDPoSChainModule {
         `Failed to start the block processing loop because of error: ${error.message}`
       );
     }
+
+    this.startPendingTransactionExpiryLoop();
+    this.startTransactionPropagationLoop();
+    this.startBlockPropagationLoop();
+    this.startBlockSignaturePropagationLoop();
 
     this.publishToChannel(`${this.alias}:bootstrap`);
   }
