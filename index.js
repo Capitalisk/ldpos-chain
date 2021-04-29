@@ -125,9 +125,11 @@ module.exports = class LDPoSChainModule {
     this.lastProcessedBlock = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
+    this.ldposForgingClients = {};
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
     this.verifiedBlockSignatureStream = new WritableConsumableStream();
+
     this.isActive = false;
   }
 
@@ -770,7 +772,7 @@ module.exports = class LDPoSChainModule {
     return crypto.createHash('sha256').update(message, 'utf8').digest(encoding || 'base64');
   }
 
-  async forgeBlock(height, timestamp, transactions) {
+  async forgeBlock(forgerAddress, height, timestamp, transactions) {
     let blockData = {
       height,
       timestamp,
@@ -778,7 +780,7 @@ module.exports = class LDPoSChainModule {
       numberOfTransactions: transactions.length,
       transactions
     };
-    return this.ldposClient.prepareBlock(blockData);
+    return this.ldposForgingClients[forgerAddress].prepareBlock(blockData);
   }
 
   async getSanitizedAccount(walletAddress) {
@@ -1924,8 +1926,8 @@ module.exports = class LDPoSChainModule {
     );
   }
 
-  async signBlock(block) {
-    return this.ldposClient.signBlock(block);
+  async signBlock(forgerAddress, block) {
+    return this.ldposForgingClients[forgerAddress].signBlock(block);
   }
 
   async waitUntilNextBlockTimeSlot(options) {
@@ -2033,24 +2035,39 @@ module.exports = class LDPoSChainModule {
   }
 
   getForgingPassphrase(options) {
+    if (!options) {
+      throw new Error(
+        `The forgers list of the ${
+          this.alias
+        } module config must contain objects`
+      );
+    }
     let {
       encryptedForgingPassphrase,
       forgingPassphrase
     } = options;
 
+    if (encryptedForgingPassphrase == null && forgingPassphrase == null) {
+      throw new Error(
+        `Objects inside the forgers list of the ${
+          this.alias
+        } module config must have either a forgingPassphrase or encryptedForgingPassphrase property`
+      );
+    }
+
     if (encryptedForgingPassphrase) {
       if (!LDPOS_PASSWORD) {
         throw new Error(
-          `Cannot decrypt the encryptedForgingPassphrase from the ${
+          `Cannot decrypt an encryptedForgingPassphrase from the forgers list of the ${
             this.alias
-          } module config without a valid LDPOS_PASSWORD environment variable`
+          } of module config without a valid LDPOS_PASSWORD environment variable`
         );
       }
       if (forgingPassphrase) {
         throw new Error(
-          `The ${
+          `The forgers list of the ${
             this.alias
-          } module config should have either a forgingPassphrase or encryptedForgingPassphrase but not both`
+          } module config must contain objects with either a forgingPassphrase or encryptedForgingPassphrase but not both`
         );
       }
       try {
@@ -2060,7 +2077,7 @@ module.exports = class LDPoSChainModule {
         forgingPassphrase = decrypted;
       } catch (error) {
         throw new Error(
-          `Failed to decrypt encryptedForgingPassphrase in ${
+          `Failed to decrypt encryptedForgingPassphrase from the forgers list of the ${
             this.alias
           } module config - Check that the LDPOS_PASSWORD environment variable is correct`
         );
@@ -2091,51 +2108,56 @@ module.exports = class LDPoSChainModule {
       maxConsecutiveBlockFetchFailures
     } = options;
 
-    let ldposClient;
-    let forgingWalletAddress;
-
     this.cryptoClientLibPath = options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
     let { createClient } = require(this.cryptoClientLibPath);
 
-    let forgingPassphrase = this.getForgingPassphrase(options);
+    this.ldposClient = createClient({
+      adapter: this.dal,
+      store: this.dal,
+      networkSymbol: this.networkSymbol,
+      verifyNetwork: false
+    });
 
-    if (forgingPassphrase) {
-      try {
-        ldposClient = createClient({
-          adapter: this.dal,
-          store: this.dal,
-          networkSymbol: this.networkSymbol,
-          verifyNetwork: false
-        });
-        await ldposClient.connect({
-          passphrase: forgingPassphrase,
-          walletAddress: options.forgingWalletAddress,
-          forgingKeyIndex: LDPOS_FORGING_KEY_INDEX == null ? null : Number(LDPOS_FORGING_KEY_INDEX)
-        });
-        if (this.autoSyncForgingKeyIndex) {
-          let wasKeyIndexUpdated = await ldposClient.syncKeyIndex('forging');
-          if (wasKeyIndexUpdated) {
-            this.logger.info(
-              `The delegate forging key index was shifted to ${ldposClient.forgingKeyIndex} during launch`
-            );
+    this.ldposForgingClients = {};
+    let forgerInfoList = options.forgers || [];
+
+    try {
+      await Promise.all(
+        forgerInfoList.map(async (forgerInfo) => {
+          let forgingPassphrase = this.getForgingPassphrase(forgerInfo);
+          let forgingClient = createClient({
+            adapter: this.dal,
+            store: this.dal,
+            networkSymbol: this.networkSymbol,
+            verifyNetwork: false
+          });
+          await forgingClient.connect({
+            passphrase: forgingPassphrase,
+            walletAddress: forgerInfo.walletAddress,
+            forgingKeyIndex: LDPOS_FORGING_KEY_INDEX == null ? null : Number(LDPOS_FORGING_KEY_INDEX)
+          });
+          let forgingWalletAddress = forgingClient.getWalletAddress();
+
+          if (this.autoSyncForgingKeyIndex) {
+            let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
+            if (wasKeyIndexUpdated) {
+              this.logger.info(
+                `The forging key index of delegate ${
+                  forgingWalletAddress
+                } was shifted to ${
+                  forgingClient.forgingKeyIndex
+                } during launch`
+              );
+            }
           }
-        }
-      } catch (error) {
-        throw new Error(
-          `Failed to initialize forging because of error: ${error.message}`
-        );
-      }
-      forgingWalletAddress = ldposClient.getWalletAddress();
-    } else {
-      ldposClient = createClient({
-        adapter: this.dal,
-        store: this.dal,
-        networkSymbol: this.networkSymbol,
-        verifyNetwork: false
-      });
+          this.ldposForgingClients[forgingWalletAddress] = forgingClient;
+        })
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to initialize forging because of error: ${error.message}`
+      );
     }
-
-    this.ldposClient = ldposClient;
 
     try {
       await this.fetchTopActiveDelegates();
@@ -2197,15 +2219,22 @@ module.exports = class LDPoSChainModule {
           }
 
           if (addedBlockCount) {
-            if (forgingPassphrase && this.autoSyncForgingKeyIndex) {
-              let wasKeyIndexUpdated = await this.ldposClient.syncKeyIndex('forging');
-              if (wasKeyIndexUpdated) {
-                this.logger.info(
-                  `The delegate forging key index was shifted to ${
-                    this.ldposClient.forgingKeyIndex
-                  } after catching up with the network`
-                );
-              }
+            if (this.autoSyncForgingKeyIndex) {
+              await Promise.all(
+                Object.keys(this.ldposForgingClients).map(async (forgerAddress) => {
+                  let forgingClient = this.ldposForgingClients[forgerAddress];
+                  let wasKeyIndexUpdated = await forgingClient.syncKeyIndex('forging');
+                  if (wasKeyIndexUpdated) {
+                    this.logger.info(
+                      `The forging key index of delegate ${
+                        forgerAddress
+                      } was shifted to ${
+                        forgingClient.forgingKeyIndex
+                      } after catching up with the network`
+                    );
+                  }
+                })
+              );
             }
             activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
             blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
@@ -2225,14 +2254,12 @@ module.exports = class LDPoSChainModule {
 
           let blockTimestamp = this.getCurrentBlockTimeSlot(forgingInterval);
           let currentForgingDelegateAddress = this.getCurrentForgingDelegateAddress();
-          let isCurrentForgingDelegate = forgingWalletAddress && forgingWalletAddress === currentForgingDelegateAddress;
           let block;
           let senderAccountDetails;
           let delegateChangedKeys;
 
-          if (isCurrentForgingDelegate) {
+          if (this.ldposForgingClients[currentForgingDelegateAddress]) {
             let validTransactions = [];
-
             let senderAddressList = Object.keys(this.pendingTransactionStreams);
 
             let senderAccountDetailsResultList = await Promise.all(
@@ -2311,8 +2338,8 @@ module.exports = class LDPoSChainModule {
             let pendingTransactions = this.sortPendingTransactions(validTransactions);
             let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
             let [ forgedBlock, forgerAccount ] = await Promise.all([
-              this.forgeBlock(nextHeight, blockTimestamp, blockTransactions),
-              this.dal.getAccount(forgingWalletAddress)
+              this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
+              this.dal.getAccount(currentForgingDelegateAddress)
             ]);
             block = forgedBlock;
             delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
@@ -2362,35 +2389,39 @@ module.exports = class LDPoSChainModule {
               }
             }
 
-            if (forgingWalletAddress && !isCurrentForgingDelegate) {
-              (async () => {
-                try {
-                  let selfSignature = await this.signBlock(block);
-                  this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
-                  await this.wait(forgingSignatureBroadcastDelay);
-                  if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
-                    throw new Error(
-                      `Refused to send signature for block ${
-                        block.id
-                      } because delegate ${
-                        block.forgerAddress
-                      } tried to double-forge`
-                    );
-                  }
+            let forgingAddressList = Object.keys(this.ldposForgingClients);
+            for (let clientForgerAddress of forgingAddressList) {
+              if (clientForgerAddress !== currentForgingDelegateAddress) {
+                (async () => {
                   try {
-                    await this.verifyBlockSignature(block, selfSignature);
+                    let selfSignature = await this.signBlock(clientForgerAddress, block);
+                    this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
+                    await this.wait(forgingSignatureBroadcastDelay);
+                    if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
+                      throw new Error(
+                        `Refused to send signature for block ${
+                          block.id
+                        } because delegate ${
+                          block.forgerAddress
+                        } tried to double-forge`
+                      );
+                    }
+                    try {
+                      await this.verifyBlockSignature(block, selfSignature);
+                    } catch (error) {
+                      throw new Error(
+                        `Produced invalid delegate block signature - ${error.message}`
+                      );
+                    }
+                    this.verifiedBlockSignatureStream.write(selfSignature);
+                    await this.broadcastBlockSignature(selfSignature);
                   } catch (error) {
-                    throw new Error(
-                      `Produced invalid delegate block signature - ${error.message}`
-                    );
+                    this.logger.error(error);
                   }
-                  this.verifiedBlockSignatureStream.write(selfSignature);
-                  await this.broadcastBlockSignature(selfSignature);
-                } catch (error) {
-                  this.logger.error(error);
-                }
-              })();
+                })();
+              }
             }
+
             // Will throw if the required number of valid signatures cannot be gathered in time.
             await this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout);
             this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
