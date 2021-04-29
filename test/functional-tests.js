@@ -105,7 +105,11 @@ describe('Functional tests', async () => {
         // Forger address: ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f
         options = {
           genesisPath: './test/utils/genesis-functional.json',
-          forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+          forgingCredentials: [
+            {
+              forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+            }
+          ],
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
           forgingInterval: 5000,
           forgingBlockBroadcastDelay: 200,
@@ -121,7 +125,7 @@ describe('Functional tests', async () => {
           networkSymbol: NETWORK_SYMBOL
         });
         await clientForger.connect({
-          passphrase: options.forgingPassphrase
+          passphrase: options.forgingCredentials[0].forgingPassphrase
         });
 
         // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -228,7 +232,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -245,7 +253,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -661,7 +669,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -677,7 +689,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -812,7 +824,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -829,7 +845,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -966,7 +982,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -982,7 +1002,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -1079,7 +1099,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -1095,7 +1119,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -1300,7 +1324,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -1316,7 +1344,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -1434,7 +1462,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -1450,7 +1482,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
@@ -1545,7 +1577,11 @@ describe('Functional tests', async () => {
 
       options = {
         genesisPath: './test/utils/genesis-functional.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
@@ -1561,7 +1597,7 @@ describe('Functional tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: options.forgingPassphrase
+        passphrase: options.forgingCredentials[0].forgingPassphrase
       });
 
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199

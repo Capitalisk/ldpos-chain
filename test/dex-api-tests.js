@@ -101,7 +101,7 @@ describe('DEX API tests', async () => {
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
-        passphrase: moduleOptions.forgingPassphrase
+        passphrase: moduleOptions.forgingCredentials[0].forgingPassphrase
       });
     };
   });
@@ -115,7 +115,11 @@ describe('DEX API tests', async () => {
     beforeEach(async () => {
       options = {
         genesisPath: './test/utils/genesis-dex-api.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 30000,
         forgingBlockBroadcastDelay: 200,
@@ -160,7 +164,11 @@ describe('DEX API tests', async () => {
     beforeEach(async () => {
       options = {
         genesisPath: './test/utils/genesis-dex-api.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 30000,
         forgingBlockBroadcastDelay: 200,
@@ -799,7 +807,11 @@ describe('DEX API tests', async () => {
     beforeEach(async () => {
       options = {
         genesisPath: './test/utils/genesis-dex-api.json',
-        forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle',
+        forgingCredentials: [
+          {
+            forgingPassphrase: 'clerk aware give dog reopen peasant duty cheese tobacco trouble gold angle'
+          }
+        ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 200,

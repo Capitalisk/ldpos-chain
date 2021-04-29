@@ -2037,7 +2037,7 @@ module.exports = class LDPoSChainModule {
   getForgingPassphrase(options) {
     if (!options) {
       throw new Error(
-        `The forgers list of the ${
+        `The forgingCredentials list of the ${
           this.alias
         } module config must contain objects`
       );
@@ -2049,7 +2049,7 @@ module.exports = class LDPoSChainModule {
 
     if (encryptedForgingPassphrase == null && forgingPassphrase == null) {
       throw new Error(
-        `Objects inside the forgers list of the ${
+        `Objects inside the forgingCredentials list of the ${
           this.alias
         } module config must have either a forgingPassphrase or encryptedForgingPassphrase property`
       );
@@ -2058,14 +2058,14 @@ module.exports = class LDPoSChainModule {
     if (encryptedForgingPassphrase) {
       if (!LDPOS_PASSWORD) {
         throw new Error(
-          `Cannot decrypt an encryptedForgingPassphrase from the forgers list of the ${
+          `Cannot decrypt an encryptedForgingPassphrase from the forgingCredentials list of the ${
             this.alias
           } of module config without a valid LDPOS_PASSWORD environment variable`
         );
       }
       if (forgingPassphrase) {
         throw new Error(
-          `The forgers list of the ${
+          `The forgingCredentials list of the ${
             this.alias
           } module config must contain objects with either a forgingPassphrase or encryptedForgingPassphrase but not both`
         );
@@ -2077,7 +2077,7 @@ module.exports = class LDPoSChainModule {
         forgingPassphrase = decrypted;
       } catch (error) {
         throw new Error(
-          `Failed to decrypt encryptedForgingPassphrase from the forgers list of the ${
+          `Failed to decrypt encryptedForgingPassphrase from the forgingCredentials list of the ${
             this.alias
           } module config - Check that the LDPOS_PASSWORD environment variable is correct`
         );
@@ -2119,7 +2119,7 @@ module.exports = class LDPoSChainModule {
     });
 
     this.ldposForgingClients = {};
-    let forgerInfoList = options.forgers || [];
+    let forgerInfoList = options.forgingCredentials || [];
 
     try {
       await Promise.all(
