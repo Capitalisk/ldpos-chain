@@ -2305,7 +2305,10 @@ module.exports = class LDPoSChainModule {
 
           let forgingAddressList = Object.keys(this.ldposForgingClients);
           for (let clientForgerAddress of forgingAddressList) {
-            if (clientForgerAddress !== currentForgingDelegateAddress) {
+            if (
+              clientForgerAddress !== currentForgingDelegateAddress &&
+              this.topActiveDelegateAddressSet.has(clientForgerAddress)
+            ) {
               (async () => {
                 try {
                   let selfSignature = await this.signBlock(clientForgerAddress, block);
