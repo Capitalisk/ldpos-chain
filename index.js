@@ -959,13 +959,34 @@ module.exports = class LDPoSChainModule {
       } else {
         senderAccountChanges.balance -= txnFee;
         senderAccountChanges.lastTransactionTimestamp = timestamp;
-        if (type === 'vote' || type === 'unvote') {
-          voteChangeList.push({
-            id: txn.id,
-            type,
-            voterAddress: senderAddress,
-            delegateAddress: txn.delegateAddress
-          });
+        if (type === 'vote') {
+          try {
+            await this.verifyVoteTransaction(txn);
+            voteChangeList.push({
+              id: txn.id,
+              type,
+              voterAddress: senderAddress,
+              delegateAddress: txn.delegateAddress
+            });
+          } catch (error) {
+            // If the transaction is invalid, it will be a no-op but
+            // fees will still be charged for spam-prevention.
+            this.logger.debug(error.message);
+          }
+        } if (type === 'unvote') {
+          try {
+            await this.verifyUnvoteTransaction(txn);
+            voteChangeList.push({
+              id: txn.id,
+              type,
+              voterAddress: senderAddress,
+              delegateAddress: txn.delegateAddress
+            });
+          } catch (error) {
+            // If the transaction is invalid, it will be a no-op but
+            // fees will still be charged for spam-prevention.
+            this.logger.debug(error.message);
+          }
         } else if (type === 'registerSigDetails') {
           let {
             newSigPublicKey,
@@ -997,11 +1018,18 @@ module.exports = class LDPoSChainModule {
             delegateAddress: senderAddress
           });
         } else if (type === 'registerMultisigWallet') {
-          multisigRegistrationList.push({
-            multisigAddress: senderAddress,
-            memberAddresses: txn.memberAddresses,
-            requiredSignatureCount: txn.requiredSignatureCount
-          });
+          try {
+            await this.verifyRegisterMultisigWalletTransaction(txn);
+            multisigRegistrationList.push({
+              multisigAddress: senderAddress,
+              memberAddresses: txn.memberAddresses,
+              requiredSignatureCount: txn.requiredSignatureCount
+            });
+          } catch (error) {
+            // If the transaction is invalid, it will be a no-op but
+            // fees will still be charged for spam-prevention.
+            this.logger.debug(error.message);
+          }
         }
       }
       this.logger.info(`Processed transaction ${txn.id}`);
@@ -1154,7 +1182,7 @@ module.exports = class LDPoSChainModule {
             }
           } catch (error) {
             if (error.type === 'InvalidActionError') {
-              this.logger.debug(error);
+              this.logger.debug(error.message);
             } else {
               throw error;
             }
@@ -1617,16 +1645,6 @@ module.exports = class LDPoSChainModule {
       await this.verifyTransactionDoesNotAlreadyExist(transaction);
     }
 
-    let { type } = transaction;
-
-    if (type === 'vote') {
-      await this.verifyVoteTransaction(transaction);
-    } else if (type === 'unvote') {
-      await this.verifyUnvoteTransaction(transaction);
-    } else if (type === 'registerMultisigWallet') {
-      await this.verifyRegisterMultisigWalletTransaction(transaction);
-    }
-
     return txnTotal;
   }
 
@@ -1642,16 +1660,6 @@ module.exports = class LDPoSChainModule {
     if (fullCheck) {
       this.verifyMultisigTransactionOffersMinFee(transaction, multisigMemberAccounts);
       await this.verifyTransactionDoesNotAlreadyExist(transaction);
-    }
-
-    let { type } = transaction;
-
-    if (type === 'vote') {
-      await this.verifyVoteTransaction(transaction);
-    } else if (type === 'unvote') {
-      await this.verifyUnvoteTransaction(transaction);
-    } else if (type === 'registerMultisigWallet') {
-      await this.verifyRegisterMultisigWalletTransaction(transaction);
     }
 
     return txnTotal;
@@ -2785,7 +2793,7 @@ module.exports = class LDPoSChainModule {
       try {
         await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
       } catch (error) {
-        this.logger.debug(error);
+        this.logger.debug(error.message);
       }
     });
   }
@@ -2837,9 +2845,7 @@ module.exports = class LDPoSChainModule {
         validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
 
         if (block.id === this.lastReceivedBlock.id) {
-          this.logger.debug(
-            new Error(`Block ${block.id} has already been received before`)
-          );
+          this.logger.debug(`Block ${block.id} has already been received before`);
           return;
         }
 
