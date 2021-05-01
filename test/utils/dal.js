@@ -518,7 +518,9 @@ class DAL {
       Object.values(this.delegates).filter(delegate => delegate.voteWeight !== '0'),
       'voteWeight',
       order,
-      BigInt
+      BigInt,
+      'address',
+      'asc'
     )
     .slice(offset, offset + limit)
     .map((delegate) => {
@@ -526,7 +528,9 @@ class DAL {
     });
   }
 
-  sortAsc(list, property, typeCastFunction) {
+  sortByProperty(list, property, order, typeCastFunction, secondaryProperty, secondaryOrder, secondaryTypeCastFunction) {
+    let sortFactor = order === 'asc' ? 1 : -1;
+    let secondarySortFactor = secondaryOrder === 'asc' ? 1 : -1;
     return list.sort((a, b) => {
       let itemA;
       let itemB;
@@ -538,41 +542,28 @@ class DAL {
         itemB = b[property];
       }
       if (itemA > itemB) {
-        return 1;
+        return sortFactor;
       }
       if (itemA < itemB) {
-        return -1;
+        return -sortFactor;
+      }
+      if (secondaryProperty != null) {
+        if (secondaryTypeCastFunction) {
+          itemA = secondaryTypeCastFunction(a[secondaryProperty]);
+          itemB = secondaryTypeCastFunction(b[secondaryProperty]);
+        } else {
+          itemA = a[secondaryProperty];
+          itemB = b[secondaryProperty];
+        }
+        if (itemA > itemB) {
+          return secondarySortFactor;
+        }
+        if (itemA < itemB) {
+          return -secondarySortFactor;
+        }
       }
       return 0;
     });
-  }
-
-  sortDesc(list, property, typeCastFunction) {
-    return list.sort((a, b) => {
-      let itemA;
-      let itemB;
-      if (typeCastFunction) {
-        itemA = typeCastFunction(a[property]);
-        itemB = typeCastFunction(b[property]);
-      } else {
-        itemA = a[property];
-        itemB = b[property];
-      }
-      if (itemA > itemB) {
-        return -1;
-      }
-      if (itemA < itemB) {
-        return 1;
-      }
-      return 0;
-    });
-  }
-
-  sortByProperty(list, property, order, typeCastFunction) {
-    if (order === 'asc') {
-      return this.sortAsc(list, property, typeCastFunction);
-    }
-    return this.sortDesc(list, property, typeCastFunction);
   }
 
   simplifyBlock(signedBlock) {
