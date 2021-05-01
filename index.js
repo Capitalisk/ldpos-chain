@@ -44,7 +44,7 @@ const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
-const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 7000;
+const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 10000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
 const DEFAULT_PROPAGATION_TIMEOUT = 10000;
 const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
@@ -481,7 +481,7 @@ module.exports = class LDPoSChainModule {
         handler: async action => {
           let minTransactionFees = {};
           let minTransactionFeeEntries = Object.entries(this.minTransactionFees || {});
-          for (let [txnType, fee] of minTransactionFeeEntries) {
+          for (let [ txnType, fee ] of minTransactionFeeEntries) {
             minTransactionFees[txnType] = fee.toString();
           }
           return {
@@ -2307,9 +2307,11 @@ module.exports = class LDPoSChainModule {
             ) {
               (async () => {
                 try {
-                  let selfSignature = await this.signBlock(clientForgerAddress, block);
+                  let [ selfSignature ] = await Promise.all([
+                    this.signBlock(clientForgerAddress, block),
+                    this.wait(forgingSignatureBroadcastDelay)
+                  ]);
                   this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
-                  await this.wait(forgingSignatureBroadcastDelay);
                   if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
                     throw new Error(
                       `Refused to send signature for block ${
