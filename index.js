@@ -764,10 +764,6 @@ module.exports = class LDPoSChainModule {
     return activeDelegates[targetIndex].address;
   }
 
-  getCurrentForgingDelegateAddress() {
-    return this.getForgingDelegateAddressAtTimestamp(Date.now());
-  }
-
   sha256(message, encoding) {
     return crypto.createHash('sha256').update(message, 'utf8').digest(encoding || 'base64');
   }
@@ -2165,7 +2161,7 @@ module.exports = class LDPoSChainModule {
         }
 
         let blockTimestamp = this.getCurrentBlockTimeSlot(forgingInterval);
-        let currentForgingDelegateAddress = this.getCurrentForgingDelegateAddress();
+        let currentForgingDelegateAddress = this.getForgingDelegateAddressAtTimestamp(blockTimestamp);
         let block;
         let senderAccountDetails;
         let delegateChangedKeys;
