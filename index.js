@@ -44,9 +44,9 @@ const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
-const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 10000;
+const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 5000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 10000;
+const DEFAULT_PROPAGATION_TIMEOUT = 15000;
 const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
@@ -123,6 +123,7 @@ module.exports = class LDPoSChainModule {
     this.topActiveDelegateAddressSet = new Set();
     this.lastFullySignedBlock = null;
     this.lastProcessedBlock = null;
+    this.activeBlockId = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
     this.ldposForgingClients = {};
@@ -1218,7 +1219,7 @@ module.exports = class LDPoSChainModule {
         senderAccountChanges.requiredSignatureCount = requiredSignatureCount;
       } catch (error) {
         if (error.type === 'InvalidActionError') {
-          this.logger.warn(error);
+          this.logger.debug(error.message);
         } else {
           throw error;
         }
@@ -1867,7 +1868,18 @@ module.exports = class LDPoSChainModule {
     if (!block) {
       throw new Error('Cannot verify block signature because there is no block pending');
     }
+
     let { signerAddress } = blockSignature;
+
+    if (blockSignature.blockId !== block.id) {
+      throw new Error(
+        `Received block signature for a different block from signer ${
+          signerAddress
+        } - Expected signature for block with ID ${
+          block.id
+        }`
+      );
+    }
 
     let signerAccount;
     try {
@@ -2163,6 +2175,8 @@ module.exports = class LDPoSChainModule {
           timePollInterval
         });
 
+        this.activeBlockId = null;
+
         if (!this.isActive) {
           this.resolveUnload && this.resolveUnload();
           break;
@@ -2306,14 +2320,16 @@ module.exports = class LDPoSChainModule {
               continue;
             }
           }
+          this.activeBlockId = block.id;
 
           let forgingAddressList = Object.keys(this.ldposForgingClients);
-          for (let clientForgerAddress of forgingAddressList) {
-            if (
-              clientForgerAddress !== currentForgingDelegateAddress &&
-              this.topActiveDelegateAddressSet.has(clientForgerAddress)
-            ) {
-              (async () => {
+
+          await Promise.all([
+            ...forgingAddressList.map(async (clientForgerAddress) => {
+              if (
+                clientForgerAddress !== currentForgingDelegateAddress &&
+                this.topActiveDelegateAddressSet.has(clientForgerAddress)
+              ) {
                 try {
                   let [ selfSignature ] = await Promise.all([
                     this.signBlock(clientForgerAddress, block),
@@ -2341,12 +2357,12 @@ module.exports = class LDPoSChainModule {
                 } catch (error) {
                   this.logger.error(error);
                 }
-              })();
-            }
-          }
+              }
+            }),
+            // Will throw if the required number of valid signatures cannot be gathered in time.
+            this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout)
+          ]);
 
-          // Will throw if the required number of valid signatures cannot be gathered in time.
-          await this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout);
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
 
           // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
@@ -2859,10 +2875,8 @@ module.exports = class LDPoSChainModule {
           );
         }
       } catch (error) {
-        this.logger.warn(
-          new Error(
-            `Received invalid block ${block && block.id} - ${error.message}`
-          )
+        this.logger.debug(
+          `Received invalid block ${block && block.id} - ${error.message}`
         );
         return;
       }
@@ -2875,10 +2889,8 @@ module.exports = class LDPoSChainModule {
           // network can verify for themselves that double-forging has taken place.
           await this.propagateBlock(block, true);
         }
-        this.logger.warn(
-          new Error(
-            `Block ${block.id} was forged with the same timestamp as the last block ${this.lastReceivedBlock.id}`
-          )
+        this.logger.debug(
+          `Block ${block.id} was forged with the same timestamp as the last block ${this.lastReceivedBlock.id}`
         );
         return;
       }
@@ -2913,15 +2925,15 @@ module.exports = class LDPoSChainModule {
           })
         );
       } catch (error) {
-        this.logger.warn(error);
+        this.logger.debug(error.message);
         return;
       }
 
       for (let txn of transactions) {
         let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
         if (!pendingTxnStream) {
-          this.logger.warn(
-            new Error(`Block ${block.id} contained an unrecognized transaction ${txn.id}`)
+          this.logger.debug(
+            `Block ${block.id} contained an unrecognized transaction ${txn.id}`
           );
           return;
         }
@@ -2943,10 +2955,8 @@ module.exports = class LDPoSChainModule {
           });
 
           if (!allSignaturesMatchPending) {
-            this.logger.warn(
-              new Error(
-                `Block ${block.id} contained a multisig transaction ${txn.id} with missing or invalid signature hashes`
-              )
+            this.logger.debug(
+              `Block ${block.id} contained a multisig transaction ${txn.id} with missing or invalid signature hashes`
             );
             return;
           }
@@ -2954,8 +2964,8 @@ module.exports = class LDPoSChainModule {
           // For sig transaction.
           let expectedSenderSignatureHash = this.sha256(pendingTxn.senderSignature);
           if (txn.senderSignatureHash !== expectedSenderSignatureHash) {
-            this.logger.warn(
-              new Error(`Block ${block.id} contained a sig transaction ${txn.id} with an invalid sender signature hash`)
+            this.logger.debug(
+              `Block ${block.id} contained a sig transaction ${txn.id} with an invalid sender signature hash`
             );
             return;
           }
@@ -2983,12 +2993,23 @@ module.exports = class LDPoSChainModule {
 
       this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
 
+      if (blockSignature.blockId !== this.activeBlockId) {
+        this.logger.debug(
+          `Discarded block signature from signer ${
+            blockSignature.signerAddress
+          } because the block ${
+            blockSignature.blockId
+          } is not the latest active block`
+        );
+        return;
+      }
+
       let lastReceivedBlock = this.lastReceivedBlock;
       let { forgerAddress } = lastReceivedBlock;
 
       if (blockSignature.signerAddress === forgerAddress) {
-        this.logger.warn(
-          new Error(`Block forger ${forgerAddress} cannot re-sign their own block`)
+        this.logger.debug(
+          `Block forger ${forgerAddress} cannot re-sign their own block`
         );
         return;
       }
@@ -2996,15 +3017,15 @@ module.exports = class LDPoSChainModule {
       try {
         await this.verifyBlockSignature(lastReceivedBlock, blockSignature);
       } catch (error) {
-        this.logger.warn(
-          new Error(`Received invalid delegate block signature - ${error.message}`)
+        this.logger.debug(
+          `Received invalid delegate block signature - ${error.message}`
         );
         return;
       }
 
       if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
-        this.logger.warn(
-          new Error(`Block signature of delegate ${blockSignature.signerAddress} has already been received before`)
+        this.logger.debug(
+          `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
         );
         return;
       }
@@ -3016,6 +3037,17 @@ module.exports = class LDPoSChainModule {
       // will not receive multiple instances of the same signature at the same time.
       let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
       await this.wait(randomPropagationDelay);
+
+      if (blockSignature.blockId !== this.activeBlockId) {
+        this.logger.debug(
+          `Discarded block signature from signer ${
+            blockSignature.signerAddress
+          } because the block ${
+            blockSignature.blockId
+          } is no longer the latest active block`
+        );
+        return;
+      }
 
       try {
         await this.broadcastBlockSignature(blockSignature);
