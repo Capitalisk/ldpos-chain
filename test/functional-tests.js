@@ -915,12 +915,10 @@ describe('Functional tests', async () => {
         await wait(8000);
       });
 
-      it('should send back an error', async () => {
-        // Note that if we post multiple transactions for the same delegate in quick
-        // succession, then both could end up being processed but one will be a no-op.
-        // This error will only occur if the previous vote has already settled into a
-        // block as is the case here.
-        assert.notEqual(caughtError, null);
+      it('should not send back an error, it should be a no-op', async () => {
+        let activeDelegatesAfterList = await chainModule.actions.getForgingDelegates.handler();
+        assert.equal(caughtError, null);
+        assert.equal(activeDelegatesAfterList.length, 1);
       });
 
     });
@@ -1084,8 +1082,10 @@ describe('Functional tests', async () => {
         await wait(8000);
       });
 
-      it('should send back an error', async () => {
-        assert.notEqual(caughtError, null);
+      it('should not send back an error, it should be a no-op', async () => {
+        let activeDelegatesAfterList = await chainModule.actions.getForgingDelegates.handler();
+        assert.equal(caughtError, null);
+        assert.equal(activeDelegatesAfterList.length, 1);
       });
 
     });
