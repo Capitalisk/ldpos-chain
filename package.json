@@ -11,7 +11,8 @@
     "start:pgadmin": "cd node_modules/ldpos-knex-dal && yarn start:pgadmin",
     "stop:pgadmin": "cd node_modules/ldpos-knex-dal && yarn stop:pgadmin",
     "reset:pgadmin": "cd node_modules/ldpos-knex-dal && yarn reset:pgadmin",
-    "test:using-dal-knex": "USE_KNEX_DAL=true mocha --reporter spec --timeout 40000 --slow 40000"
+    "test:using-dal-knex-postgres": "USE_KNEX_DAL=true mocha --reporter spec --timeout 40000 --slow 40000",
+    "test:using-dal-knex-sqlite": "USE_KNEX_DAL=true USE_SQLITE=true mocha --reporter spec --timeout 40000 --slow 40000"
   },
   "keywords": [
     "blockchain",
