@@ -19,7 +19,7 @@ const validPropertyList = [
   'signature'
 ];
 
-function validateBlockTrailerSignatureSchema(blockTrailerSignature, networkSymbol) {
+function validateBlockTrailerSignatureSchema(blockTrailerSignature, maxAddresses, networkSymbol) {
   if (!blockTrailerSignature) {
     throw new Error(
       'Block signature was not specified'
@@ -35,6 +35,14 @@ function validateBlockTrailerSignatureSchema(blockTrailerSignature, networkSymbo
   let blockSignerAddresses = blockTrailerSignature.blockSignerAddresses;
   if (!Array.isArray(blockSignerAddresses)) {
     throw new Error('Block blockSignerAddresses must be an array');
+  }
+
+  if (blockSignerAddresses.length > maxAddresses) {
+    throw new Error(
+      `Block blockSignerAddresses array contained more than the maximum number of ${
+        maxAddresses
+      } addresses`
+    );
   }
 
   for (let blockSignerAddress of blockSignerAddresses) {

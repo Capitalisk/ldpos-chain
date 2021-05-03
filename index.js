@@ -123,7 +123,7 @@ module.exports = class LDPoSChainModule {
     this.pendingBlocks = [];
     this.topActiveDelegates = [];
     this.topActiveDelegateAddressSet = new Set();
-    this.lastFullySignedBlock = null;
+    this.lastSignedBlock = null;
     this.lastProcessedBlock = null;
     this.activeBlockId = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
@@ -762,8 +762,8 @@ module.exports = class LDPoSChainModule {
     return lastBlock.signatures;
   }
 
-  async receiveLastBlockTrailerSignatures(lastFullySignedBlock, timeout) {
-    if (lastFullySignedBlock.trailerSignature) {
+  async receiveLastBlockTrailerSignatures(lastSignedBlock, requiredCount, timeout) {
+    if (lastSignedBlock.trailerSignature) {
       return;
     }
 
@@ -775,13 +775,13 @@ module.exports = class LDPoSChainModule {
       } catch (error) {
         throw new Error(
           `Failed to receive block trailer signature of forger ${
-            lastFullySignedBlock.forgerAddress
+            lastSignedBlock.forgerAddress
           } before timeout`
         );
       }
-      let { blockId } = blockTrailerSignature;
-      if (blockId === lastFullySignedBlock.id) {
-        lastFullySignedBlock.trailerSignature = blockTrailerSignature;
+      let { blockId, blockSignerAddresses } = blockTrailerSignature;
+      if (blockId === lastSignedBlock.id && blockSignerAddresses.length >= requiredCount) {
+        lastSignedBlock.trailerSignature = blockTrailerSignature;
         break;
       }
       let timeDiff = Date.now() - startTime;
@@ -2502,7 +2502,7 @@ module.exports = class LDPoSChainModule {
             }),
             // Will throw if the required number of valid signatures cannot be gathered in time.
             this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout),
-            this.receiveLastBlockTrailerSignatures(block, trailerSignatureBroadcastDelay + propagationTimeout)
+            this.receiveLastBlockTrailerSignatures(block, blockSignerMajorityCount, trailerSignatureBroadcastDelay + propagationTimeout)
           ]);
 
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
@@ -2510,7 +2510,7 @@ module.exports = class LDPoSChainModule {
           // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
           if (this.blockMeetsRequirements(block, delegateChangedKeys)) {
             await this.processBlock(block, senderAccountDetails, false);
-            this.lastFullySignedBlock = block;
+            this.lastSignedBlock = block;
 
             this.nodeHeight = nextHeight;
             this.networkHeight = nextHeight;
@@ -3216,7 +3216,7 @@ module.exports = class LDPoSChainModule {
       (async () => {
         let blockTrailerSignature = event.data;
 
-        validateBlockTrailerSignatureSchema(blockTrailerSignature, this.networkSymbol);
+        validateBlockTrailerSignatureSchema(blockTrailerSignature, this.forgerCount, this.networkSymbol);
 
         this.logger.info(`Received block trailer signature from signer ${blockTrailerSignature.signerAddress}`);
 
@@ -3587,7 +3587,7 @@ module.exports = class LDPoSChainModule {
       };
     }
     this.lastReceivedBlock = this.lastProcessedBlock;
-    this.lastFullySignedBlock = this.lastProcessedBlock;
+    this.lastSignedBlock = this.lastProcessedBlock;
 
     if (this.blockSignaturesToProvide >= this.forgerCount - 1) {
       moduleState.providesAllBlockSignatures = true;

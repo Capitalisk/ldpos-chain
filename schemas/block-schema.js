@@ -63,7 +63,7 @@ function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerB
   validateSignature('forgerSignature', block);
 
   if (requireTrailerSignature) {
-    validateBlockTrailerSignatureSchema(block.trailerSignature, networkSymbol);
+    validateBlockTrailerSignatureSchema(block.trailerSignature, maxSignatures, networkSymbol);
   }
 
   if (!Array.isArray(block.signatures)) {
