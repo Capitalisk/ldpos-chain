@@ -44,9 +44,9 @@ const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
-const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 5000;
+const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 15000;
+const DEFAULT_PROPAGATION_TIMEOUT = 8000;
 const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
@@ -2805,12 +2805,15 @@ module.exports = class LDPoSChainModule {
   }
 
   async startTransactionPropagationLoop() {
-    this.channel.subscribe(`network:event:${this.alias}:transaction`, async (event) => {
-      try {
-        await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
-      } catch (error) {
-        this.logger.debug(error.message);
-      }
+    this.channel.subscribe(`network:event:${this.alias}:transaction`, (event) => {
+      // Process transactions in parallel.
+      (async () => {
+        try {
+          await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
+        } catch (error) {
+          this.logger.debug(error.message);
+        }
+      })();
     });
   }
 
@@ -2851,209 +2854,215 @@ module.exports = class LDPoSChainModule {
 
   async startBlockPropagationLoop() {
     let channel = this.channel;
-    channel.subscribe(`network:event:${this.alias}:block`, async (event) => {
-      let block = event.data;
-      this.logger.info(`Received block ${block && block.id}`);
+    channel.subscribe(`network:event:${this.alias}:block`, (event) => {
+      // Process blocks in parallel.
+      (async () => {
+        let block = event.data;
+        this.logger.info(`Received block ${block && block.id}`);
 
-      let senderAccountDetails;
-      let delegateChangedKeys;
-      try {
-        validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
+        let senderAccountDetails;
+        let delegateChangedKeys;
+        try {
+          validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
 
-        if (block.id === this.lastReceivedBlock.id) {
-          this.logger.debug(`Block ${block.id} has already been received before`);
-          return;
-        }
+          if (block.id === this.lastReceivedBlock.id) {
+            this.logger.debug(`Block ${block.id} has already been received before`);
+            return;
+          }
 
-        let blockInfo = await this.verifyForgedBlock(block, this.lastProcessedBlock);
-        senderAccountDetails = blockInfo.senderAccountDetails;
-        delegateChangedKeys = blockInfo.delegateChangedKeys;
-        let currentBlockTimeSlot = this.getCurrentBlockTimeSlot(this.forgingInterval);
-        if (block.timestamp !== currentBlockTimeSlot) {
-          throw new Error(
-            `Block timestamp ${block.timestamp} did not correspond to the current time slot ${currentBlockTimeSlot}`
-          );
-        }
-      } catch (error) {
-        this.logger.debug(
-          `Received invalid block ${block && block.id} - ${error.message}`
-        );
-        return;
-      }
-
-      // If double-forged block was received.
-      if (block.timestamp === this.lastReceivedBlock.timestamp) {
-        if (this.lastDoubleForgedBlockTimestamp !== this.lastReceivedBlock.timestamp) {
-          this.lastDoubleForgedBlockTimestamp = this.lastReceivedBlock.timestamp;
-          // The first time a double-forged block is received, propagate it to ensure that other nodes in the
-          // network can verify for themselves that double-forging has taken place.
-          await this.propagateBlock(block, true);
-        }
-        this.logger.debug(
-          `Block ${block.id} was forged with the same timestamp as the last block ${this.lastReceivedBlock.id}`
-        );
-        return;
-      }
-
-      let { transactions } = block;
-      let senderTransactions = {};
-      for (let txn of transactions) {
-        if (!senderTransactions[txn.senderAddress]) {
-          senderTransactions[txn.senderAddress] = [];
-        }
-        senderTransactions[txn.senderAddress].push(txn);
-      }
-
-      try {
-        await Promise.all(
-          Object.values(senderTransactions).map(async (senderTxnList) => {
-            await Promise.all(
-              senderTxnList.map(async (txn) => {
-                let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
-                if (pendingTxnStream && pendingTxnStream.transactionInfoMap.has(txn.id)) {
-                  return;
-                }
-                try {
-                  await this.fetchSignedPendingTransaction(txn.id, this.maxConsecutiveTransactionFetchFailures);
-                } catch (error) {
-                  throw new Error(
-                    `Block ${block.id} contained an unrecognized transaction ${txn.id} - ${error.message}`
-                  );
-                }
-              })
+          let blockInfo = await this.verifyForgedBlock(block, this.lastProcessedBlock);
+          senderAccountDetails = blockInfo.senderAccountDetails;
+          delegateChangedKeys = blockInfo.delegateChangedKeys;
+          let currentBlockTimeSlot = this.getCurrentBlockTimeSlot(this.forgingInterval);
+          if (block.timestamp !== currentBlockTimeSlot) {
+            throw new Error(
+              `Block timestamp ${block.timestamp} did not correspond to the current time slot ${currentBlockTimeSlot}`
             );
-          })
-        );
-      } catch (error) {
-        this.logger.debug(error.message);
-        return;
-      }
-
-      for (let txn of transactions) {
-        let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
-        if (!pendingTxnStream) {
+          }
+        } catch (error) {
           this.logger.debug(
-            `Block ${block.id} contained an unrecognized transaction ${txn.id}`
+            `Received invalid block ${block && block.id} - ${error.message}`
           );
           return;
         }
-        let pendingTxn = pendingTxnStream.transactionInfoMap.get(txn.id).transaction;
 
-        if (txn.signatures) {
-          // For multisig transaction.
-          let pendingTxnSignatures = {};
-          for (let pendingSignaturePacket of pendingTxn.signatures) {
-            pendingTxnSignatures[pendingSignaturePacket.signerAddress] = pendingSignaturePacket;
+        // If double-forged block was received.
+        if (block.timestamp === this.lastReceivedBlock.timestamp) {
+          if (this.lastDoubleForgedBlockTimestamp !== this.lastReceivedBlock.timestamp) {
+            this.lastDoubleForgedBlockTimestamp = this.lastReceivedBlock.timestamp;
+            // The first time a double-forged block is received, propagate it to ensure that other nodes in the
+            // network can verify for themselves that double-forging has taken place.
+            await this.propagateBlock(block, true);
           }
-          let allSignaturesMatchPending = txn.signatures.every((signaturePacket) => {
-            let expectedSignaturePacket = pendingTxnSignatures[signaturePacket.signerAddress];
-            if (!expectedSignaturePacket) {
-              return false;
+          this.logger.debug(
+            `Block ${block.id} was forged with the same timestamp as the last block ${this.lastReceivedBlock.id}`
+          );
+          return;
+        }
+
+        let { transactions } = block;
+        let senderTransactions = {};
+        for (let txn of transactions) {
+          if (!senderTransactions[txn.senderAddress]) {
+            senderTransactions[txn.senderAddress] = [];
+          }
+          senderTransactions[txn.senderAddress].push(txn);
+        }
+
+        try {
+          await Promise.all(
+            Object.values(senderTransactions).map(async (senderTxnList) => {
+              await Promise.all(
+                senderTxnList.map(async (txn) => {
+                  let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
+                  if (pendingTxnStream && pendingTxnStream.transactionInfoMap.has(txn.id)) {
+                    return;
+                  }
+                  try {
+                    await this.fetchSignedPendingTransaction(txn.id, this.maxConsecutiveTransactionFetchFailures);
+                  } catch (error) {
+                    throw new Error(
+                      `Block ${block.id} contained an unrecognized transaction ${txn.id} - ${error.message}`
+                    );
+                  }
+                })
+              );
+            })
+          );
+        } catch (error) {
+          this.logger.debug(error.message);
+          return;
+        }
+
+        for (let txn of transactions) {
+          let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
+          if (!pendingTxnStream) {
+            this.logger.debug(
+              `Block ${block.id} contained an unrecognized transaction ${txn.id}`
+            );
+            return;
+          }
+          let pendingTxn = pendingTxnStream.transactionInfoMap.get(txn.id).transaction;
+
+          if (txn.signatures) {
+            // For multisig transaction.
+            let pendingTxnSignatures = {};
+            for (let pendingSignaturePacket of pendingTxn.signatures) {
+              pendingTxnSignatures[pendingSignaturePacket.signerAddress] = pendingSignaturePacket;
             }
-            let expectedSignatureHash = this.sha256(expectedSignaturePacket.signature);
-            return signaturePacket.signatureHash === expectedSignatureHash;
-          });
+            let allSignaturesMatchPending = txn.signatures.every((signaturePacket) => {
+              let expectedSignaturePacket = pendingTxnSignatures[signaturePacket.signerAddress];
+              if (!expectedSignaturePacket) {
+                return false;
+              }
+              let expectedSignatureHash = this.sha256(expectedSignaturePacket.signature);
+              return signaturePacket.signatureHash === expectedSignatureHash;
+            });
 
-          if (!allSignaturesMatchPending) {
-            this.logger.debug(
-              `Block ${block.id} contained a multisig transaction ${txn.id} with missing or invalid signature hashes`
-            );
-            return;
-          }
-        } else {
-          // For sig transaction.
-          let expectedSenderSignatureHash = this.sha256(pendingTxn.senderSignature);
-          if (txn.senderSignatureHash !== expectedSenderSignatureHash) {
-            this.logger.debug(
-              `Block ${block.id} contained a sig transaction ${txn.id} with an invalid sender signature hash`
-            );
-            return;
+            if (!allSignaturesMatchPending) {
+              this.logger.debug(
+                `Block ${block.id} contained a multisig transaction ${txn.id} with missing or invalid signature hashes`
+              );
+              return;
+            }
+          } else {
+            // For sig transaction.
+            let expectedSenderSignatureHash = this.sha256(pendingTxn.senderSignature);
+            if (txn.senderSignatureHash !== expectedSenderSignatureHash) {
+              this.logger.debug(
+                `Block ${block.id} contained a sig transaction ${txn.id} with an invalid sender signature hash`
+              );
+              return;
+            }
           }
         }
-      }
 
-      this.lastReceivedSignerAddressSet.clear();
-      this.lastReceivedBlock = block;
-      this.verifiedBlockInfoStream.write({
-        block: this.lastReceivedBlock,
-        senderAccountDetails,
-        delegateChangedKeys
-      });
+        this.lastReceivedSignerAddressSet.clear();
+        this.lastReceivedBlock = block;
+        this.verifiedBlockInfoStream.write({
+          block: this.lastReceivedBlock,
+          senderAccountDetails,
+          delegateChangedKeys
+        });
 
-      await this.propagateBlock(block, true);
+        await this.propagateBlock(block, true);
+      })();
     });
   }
 
   async startBlockSignaturePropagationLoop() {
     let channel = this.channel;
-    channel.subscribe(`network:event:${this.alias}:blockSignature`, async (event) => {
-      let blockSignature = event.data;
+    channel.subscribe(`network:event:${this.alias}:blockSignature`, (event) => {
+      // Verify block signatures in parallel.
+      (async () => {
+        let blockSignature = event.data;
 
-      validateBlockSignatureSchema(blockSignature, this.networkSymbol);
+        validateBlockSignatureSchema(blockSignature, this.networkSymbol);
 
-      this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
+        this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
 
-      if (blockSignature.blockId !== this.activeBlockId) {
-        this.logger.debug(
-          `Discarded block signature from signer ${
-            blockSignature.signerAddress
-          } because the block ${
-            blockSignature.blockId
-          } is not the latest active block`
-        );
-        return;
-      }
+        if (blockSignature.blockId !== this.activeBlockId) {
+          this.logger.debug(
+            `Discarded block signature from signer ${
+              blockSignature.signerAddress
+            } because the block ${
+              blockSignature.blockId
+            } is not the latest active block`
+          );
+          return;
+        }
 
-      let lastReceivedBlock = this.lastReceivedBlock;
-      let { forgerAddress } = lastReceivedBlock;
+        let lastReceivedBlock = this.lastReceivedBlock;
+        let { forgerAddress } = lastReceivedBlock;
 
-      if (blockSignature.signerAddress === forgerAddress) {
-        this.logger.debug(
-          `Block forger ${forgerAddress} cannot re-sign their own block`
-        );
-        return;
-      }
+        if (blockSignature.signerAddress === forgerAddress) {
+          this.logger.debug(
+            `Block forger ${forgerAddress} cannot re-sign their own block`
+          );
+          return;
+        }
 
-      try {
-        await this.verifyBlockSignature(lastReceivedBlock, blockSignature);
-      } catch (error) {
-        this.logger.debug(
-          `Received invalid delegate block signature - ${error.message}`
-        );
-        return;
-      }
+        try {
+          await this.verifyBlockSignature(lastReceivedBlock, blockSignature);
+        } catch (error) {
+          this.logger.debug(
+            `Received invalid delegate block signature - ${error.message}`
+          );
+          return;
+        }
 
-      if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
-        this.logger.debug(
-          `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
-        );
-        return;
-      }
+        if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
+          this.logger.debug(
+            `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
+          );
+          return;
+        }
 
-      this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress)
-      this.verifiedBlockSignatureStream.write(blockSignature);
+        this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress)
+        this.verifiedBlockSignatureStream.write(blockSignature);
 
-      // This is a performance optimization to ensure that peers
-      // will not receive multiple instances of the same signature at the same time.
-      let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
-      await this.wait(randomPropagationDelay);
+        // This is a performance optimization to ensure that peers
+        // will not receive multiple instances of the same signature at the same time.
+        let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
+        await this.wait(randomPropagationDelay);
 
-      if (blockSignature.blockId !== this.activeBlockId) {
-        this.logger.debug(
-          `Discarded block signature from signer ${
-            blockSignature.signerAddress
-          } because the block ${
-            blockSignature.blockId
-          } is no longer the latest active block`
-        );
-        return;
-      }
+        if (blockSignature.blockId !== this.activeBlockId) {
+          this.logger.debug(
+            `Discarded block signature from signer ${
+              blockSignature.signerAddress
+            } because the block ${
+              blockSignature.blockId
+            } is no longer the latest active block`
+          );
+          return;
+        }
 
-      try {
-        await this.broadcastBlockSignature(blockSignature);
-      } catch (error) {
-        this.logger.error(error);
-      }
+        try {
+          await this.broadcastBlockSignature(blockSignature);
+        } catch (error) {
+          this.logger.error(error);
+        }
+      })();
     });
   }
 
