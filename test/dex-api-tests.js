@@ -124,6 +124,7 @@ describe('DEX API tests', async () => {
         forgingInterval: 30000,
         forgingBlockBroadcastDelay: 200,
         forgingSignatureBroadcastDelay: 200,
+        trailerSignatureBroadcastDelay: 3000,
         propagationRandomness: 100,
         propagationTimeout: 5000
       };
@@ -173,6 +174,7 @@ describe('DEX API tests', async () => {
         forgingInterval: 30000,
         forgingBlockBroadcastDelay: 200,
         forgingSignatureBroadcastDelay: 200,
+        trailerSignatureBroadcastDelay: 3000,
         propagationRandomness: 100,
         propagationTimeout: 5000
       };
@@ -319,6 +321,8 @@ describe('DEX API tests', async () => {
         blockData.map(async (block) => {
           block.previousBlockId = lastBlockId;
           let preparedBlock = await clientForger.prepareBlock(block);
+          let trailerSignature = await clientForger.signBlockTrailer(preparedBlock);
+          preparedBlock.trailerSignature = trailerSignature;
           let { transactions, ...preparedBlockWithoutTxns } = preparedBlock;
           lastBlockId = preparedBlockWithoutTxns.id;
 
@@ -816,6 +820,7 @@ describe('DEX API tests', async () => {
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 200,
         forgingSignatureBroadcastDelay: 200,
+        trailerSignatureBroadcastDelay: 3000,
         propagationRandomness: 100,
         propagationTimeout: 5000
       };

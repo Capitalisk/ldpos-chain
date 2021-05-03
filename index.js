@@ -8,6 +8,7 @@ const pkg = require('./package.json');
 const { validateBlockSchema } = require('./schemas/block-schema');
 const { validateTransactionSchema } = require('./schemas/transaction-schema');
 const { validateBlockSignatureSchema } = require('./schemas/block-signature-schema');
+const { validateBlockTrailerSignatureSchema } = require('./schemas/block-trailer-signature-schema');
 const { validateMultisigTransactionSchema } = require('./schemas/multisig-transaction-schema');
 const { validateSigTransactionSchema } = require('./schemas/sig-transaction-schema');
 const {
@@ -45,6 +46,7 @@ const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
 const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
+const DEFAULT_TRAILER_SIGNATURE_BROADCAST_DELAY = 20000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
 const DEFAULT_PROPAGATION_TIMEOUT = 8000;
 const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
@@ -126,10 +128,12 @@ module.exports = class LDPoSChainModule {
     this.activeBlockId = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
+    this.lastReceivedTrailerSignerAddressSet = new Set();
     this.ldposForgingClients = {};
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
     this.verifiedBlockSignatureStream = new WritableConsumableStream();
+    this.verifiedBlockTrailerSignatureStream = new WritableConsumableStream();
 
     this.isActive = false;
   }
@@ -500,7 +504,13 @@ module.exports = class LDPoSChainModule {
   }
 
   simplifyBlock(signedBlock) {
-    let { transactions, forgerSignature, signatures, ...simpleBlock } = signedBlock;
+    let {
+      transactions,
+      forgerSignature,
+      trailerSignature,
+      signatures,
+      ...simpleBlock
+    } = signedBlock;
     return simpleBlock;
   }
 
@@ -668,6 +678,7 @@ module.exports = class LDPoSChainModule {
             this.maxTransactionsPerBlock,
             requiredBlockSignatureCount,
             this.forgerCount,
+            true,
             this.networkSymbol
           );
 
@@ -749,6 +760,36 @@ module.exports = class LDPoSChainModule {
       }
     }
     return lastBlock.signatures;
+  }
+
+  async receiveLastBlockTrailerSignatures(lastFullySignedBlock, timeout) {
+    if (lastFullySignedBlock.trailerSignature) {
+      return;
+    }
+
+    while (true) {
+      let startTime = Date.now();
+      let blockTrailerSignature;
+      try {
+        blockTrailerSignature = await this.verifiedBlockTrailerSignatureStream.once(timeout);
+      } catch (error) {
+        throw new Error(
+          `Failed to receive block trailer signature of forger ${
+            lastFullySignedBlock.forgerAddress
+          } before timeout`
+        );
+      }
+      let { blockId } = blockTrailerSignature;
+      if (blockId === lastFullySignedBlock.id) {
+        lastFullySignedBlock.trailerSignature = blockTrailerSignature;
+        break;
+      }
+      let timeDiff = Date.now() - startTime;
+      timeout -= timeDiff;
+      if (timeout < 0) {
+        timeout = 0;
+      }
+    }
   }
 
   getCurrentBlockTimeSlot(forgingInterval) {
@@ -835,7 +876,12 @@ module.exports = class LDPoSChainModule {
     this.logger.info(
       `Started processing ${synched ? 'synched' : 'received'} block ${block.id}`
     );
-    let { transactions, height, signatures: blockSignatureList } = block;
+    let { transactions, height, trailerSignature, signatures: blockSignatureList } = block;
+    let trailerSignerAddressSet = new Set(trailerSignature.blockSignerAddresses);
+    blockSignatureList = blockSignatureList.filter(
+      (signaturePacket) => trailerSignerAddressSet.has(signaturePacket.signerAddress)
+    );
+
     let senderAddressSet = new Set();
     let recipientAddressSet = new Set();
     let multisigMemberAddressSet = new Set();
@@ -902,17 +948,17 @@ module.exports = class LDPoSChainModule {
       };
     }
 
-    let forgerAccountChanges = affectedAccountDetails[block.forgerAddress].changes;
-    forgerAccountChanges.forgingPublicKey = block.forgingPublicKey;
-    forgerAccountChanges.nextForgingPublicKey = block.nextForgingPublicKey;
-    forgerAccountChanges.nextForgingKeyIndex = block.nextForgingKeyIndex;
-
     for (let blockSignature of blockSignatureList) {
       let blockSignerAccountChanges = affectedAccountDetails[blockSignature.signerAddress].changes;
       blockSignerAccountChanges.forgingPublicKey = blockSignature.forgingPublicKey;
       blockSignerAccountChanges.nextForgingPublicKey = blockSignature.nextForgingPublicKey;
       blockSignerAccountChanges.nextForgingKeyIndex = blockSignature.nextForgingKeyIndex;
     }
+
+    let forgerAccountChanges = affectedAccountDetails[block.forgerAddress].changes;
+    forgerAccountChanges.forgingPublicKey = trailerSignature.forgingPublicKey;
+    forgerAccountChanges.nextForgingPublicKey = trailerSignature.nextForgingPublicKey;
+    forgerAccountChanges.nextForgingKeyIndex = trailerSignature.nextForgingKeyIndex;
 
     let voteChangeList = [];
     let delegateRegistrationList = [];
@@ -1678,11 +1724,21 @@ module.exports = class LDPoSChainModule {
       block.signatures.map(blockSignature => this.verifyBlockSignature(block, blockSignature))
     );
 
+    await this.verifyBlockTrailerSignature(block, block.trailerSignature);
+
     return blockInfo;
   }
 
   hasDelegateChangedForgingKeys(block, delegateAccount) {
-    return block.forgingPublicKey !== delegateAccount.forgingPublicKey || delegateAccount.nextForgingPublicKey == null;
+    let isBlockForgingKeyDifferent = (
+      block.forgingPublicKey !== delegateAccount.forgingPublicKey ||
+      delegateAccount.nextForgingPublicKey == null
+    );
+    if (block.trailerSignature) {
+      return isBlockForgingKeyDifferent ||
+        block.trailerSignature.forgingPublicKey !== delegateAccount.forgingPublicKey;
+    }
+    return isBlockForgingKeyDifferent;
   }
 
   async verifyForgedBlock(block, lastBlock) {
@@ -1910,6 +1966,56 @@ module.exports = class LDPoSChainModule {
     return this.ldposClient.verifyBlockSignature(block, blockSignature);
   }
 
+  async verifyBlockTrailerSignature(block, blockTrailerSignature) {
+    if (!block) {
+      throw new Error('Cannot verify block trailer signature because there is no block pending');
+    }
+
+    let { signerAddress } = blockTrailerSignature;
+
+    if (blockTrailerSignature.blockId !== block.id) {
+      throw new Error(
+        `Received block trailer signature for a different block from signer ${
+          signerAddress
+        } - Expected signature for block with ID ${
+          block.id
+        }`
+      );
+    }
+
+    if (signerAddress !== block.forgerAddress) {
+      throw new Error(
+        `Block trailer signer ${
+          signerAddress
+        } did not correspond to the block forger address ${
+          block.forgerAddress
+        }`
+      );
+    }
+
+    let signerAccount;
+    try {
+      signerAccount = await this.getSanitizedAccount(signerAddress);
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch trailer signer account ${signerAddress} because of error: ${error.message}`
+      );
+    }
+
+    if (
+      blockTrailerSignature.forgingPublicKey !== signerAccount.forgingPublicKey &&
+      blockTrailerSignature.forgingPublicKey !== signerAccount.nextForgingPublicKey
+    ) {
+      throw new Error(
+        `Block trailer signature forgingPublicKey did not match the forgingPublicKey or nextForgingPublicKey of the signer account ${
+          signerAddress
+        }`
+      );
+    }
+
+    return this.ldposClient.verifyBlockTrailerSignature(block, blockTrailerSignature);
+  }
+
   async broadcastBlock(block) {
     try {
       await this.channel.invoke('network:emit', {
@@ -1934,7 +2040,7 @@ module.exports = class LDPoSChainModule {
       });
     } catch (error) {
       throw new Error(
-        `Failed to emit blockSignature to the network because of error: ${error.message}`
+        `Failed to emit block signature to the network because of error: ${error.message}`
       );
     }
     this.logger.info(
@@ -1942,8 +2048,29 @@ module.exports = class LDPoSChainModule {
     );
   }
 
+  async broadcastBlockTrailerSignature(trailerSignature) {
+    try {
+      await this.channel.invoke('network:emit', {
+        event: `${this.alias}:blockTrailerSignature`,
+        data: trailerSignature,
+        peerLimit: NO_PEER_LIMIT
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to emit block trailer signature to the network because of error: ${error.message}`
+      );
+    }
+    this.logger.info(
+      `Broadcasted block trailer signature from signer ${trailerSignature.signerAddress} to the network`
+    );
+  }
+
   async signBlock(forgerAddress, block) {
     return this.ldposForgingClients[forgerAddress].signBlock(block);
+  }
+
+  async signBlockTrailer(forgerAddress, signedBlock) {
+    return this.ldposForgingClients[forgerAddress].signBlockTrailer(signedBlock);
   }
 
   async waitUntilNextBlockTimeSlot(options) {
@@ -2109,6 +2236,7 @@ module.exports = class LDPoSChainModule {
       forgingInterval,
       forgingBlockBroadcastDelay,
       forgingSignatureBroadcastDelay,
+      trailerSignatureBroadcastDelay,
       forgerCount,
       fetchBlockLimit,
       fetchBlockPause,
@@ -2275,6 +2403,7 @@ module.exports = class LDPoSChainModule {
           delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
 
           this.lastReceivedSignerAddressSet.clear();
+          this.lastReceivedTrailerSignerAddressSet.clear();
           this.lastReceivedBlock = block;
           this.logger.info(
             `Forged block ${block.id} at height ${block.height} as forger ${currentForgingDelegateAddress}`
@@ -2326,41 +2455,54 @@ module.exports = class LDPoSChainModule {
 
           await Promise.all([
             ...forgingAddressList.map(async (clientForgerAddress) => {
-              if (
-                clientForgerAddress !== currentForgingDelegateAddress &&
-                this.topActiveDelegateAddressSet.has(clientForgerAddress)
-              ) {
+              if (this.topActiveDelegateAddressSet.has(clientForgerAddress)) {
                 try {
-                  let [ selfSignature ] = await Promise.all([
-                    this.signBlock(clientForgerAddress, block),
-                    this.wait(forgingSignatureBroadcastDelay)
-                  ]);
-                  this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
-                  if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
-                    throw new Error(
-                      `Refused to send signature for block ${
-                        block.id
-                      } because delegate ${
-                        block.forgerAddress
-                      } tried to double-forge`
-                    );
+                  if (clientForgerAddress === currentForgingDelegateAddress) {
+                    await this.wait(trailerSignatureBroadcastDelay);
+                    let selfSignature = await this.signBlockTrailer(clientForgerAddress, block);
+                    this.lastReceivedTrailerSignerAddressSet.add(selfSignature.signerAddress);
+                    try {
+                      await this.verifyBlockTrailerSignature(block, selfSignature);
+                    } catch (error) {
+                      throw new Error(
+                        `Produced invalid delegate block trailer signature - ${error.message}`
+                      );
+                    }
+                    this.verifiedBlockTrailerSignatureStream.write(selfSignature);
+                    await this.broadcastBlockTrailerSignature(selfSignature);
+                  } else {
+                    let [ selfSignature ] = await Promise.all([
+                      this.signBlock(clientForgerAddress, block),
+                      this.wait(forgingSignatureBroadcastDelay)
+                    ]);
+                    this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
+                    if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
+                      throw new Error(
+                        `Refused to send signature for block ${
+                          block.id
+                        } because delegate ${
+                          block.forgerAddress
+                        } tried to double-forge`
+                      );
+                    }
+                    try {
+                      await this.verifyBlockSignature(block, selfSignature);
+                    } catch (error) {
+                      throw new Error(
+                        `Produced invalid delegate block signature - ${error.message}`
+                      );
+                    }
+                    this.verifiedBlockSignatureStream.write(selfSignature);
+                    await this.broadcastBlockSignature(selfSignature);
                   }
-                  try {
-                    await this.verifyBlockSignature(block, selfSignature);
-                  } catch (error) {
-                    throw new Error(
-                      `Produced invalid delegate block signature - ${error.message}`
-                    );
-                  }
-                  this.verifiedBlockSignatureStream.write(selfSignature);
-                  await this.broadcastBlockSignature(selfSignature);
                 } catch (error) {
                   this.logger.error(error);
                 }
               }
             }),
             // Will throw if the required number of valid signatures cannot be gathered in time.
-            this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout)
+            this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout),
+            this.receiveLastBlockTrailerSignatures(block, trailerSignatureBroadcastDelay + propagationTimeout)
           ]);
 
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
@@ -2863,7 +3005,7 @@ module.exports = class LDPoSChainModule {
         let senderAccountDetails;
         let delegateChangedKeys;
         try {
-          validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
+          validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, false, this.networkSymbol);
 
           if (block.id === this.lastReceivedBlock.id) {
             this.logger.debug(`Block ${block.id} has already been received before`);
@@ -2978,6 +3120,7 @@ module.exports = class LDPoSChainModule {
         }
 
         this.lastReceivedSignerAddressSet.clear();
+        this.lastReceivedTrailerSignerAddressSet.clear();
         this.lastReceivedBlock = block;
         this.verifiedBlockInfoStream.write({
           block: this.lastReceivedBlock,
@@ -3007,7 +3150,7 @@ module.exports = class LDPoSChainModule {
               blockSignature.signerAddress
             } because the block ${
               blockSignature.blockId
-            } is not the latest active block`
+            } was not the latest active block`
           );
           return;
         }
@@ -3017,7 +3160,7 @@ module.exports = class LDPoSChainModule {
 
         if (blockSignature.signerAddress === forgerAddress) {
           this.logger.debug(
-            `Block forger ${forgerAddress} cannot re-sign their own block`
+            `Block forger ${forgerAddress} cannot re-sign their own block header`
           );
           return;
         }
@@ -3059,6 +3202,98 @@ module.exports = class LDPoSChainModule {
 
         try {
           await this.broadcastBlockSignature(blockSignature);
+        } catch (error) {
+          this.logger.error(error);
+        }
+      })();
+    });
+  }
+
+  async startBlockTrailerSignaturePropagationLoop() {
+    let channel = this.channel;
+    channel.subscribe(`network:event:${this.alias}:blockTrailerSignature`, (event) => {
+      // Verify block trailer signatures in parallel.
+      (async () => {
+        let blockTrailerSignature = event.data;
+
+        validateBlockTrailerSignatureSchema(blockTrailerSignature, this.networkSymbol);
+
+        this.logger.info(`Received block trailer signature from signer ${blockTrailerSignature.signerAddress}`);
+
+        if (blockTrailerSignature.blockId !== this.activeBlockId) {
+          this.logger.debug(
+            `Discarded block trailer signature from signer ${
+              blockTrailerSignature.signerAddress
+            } because the block ${
+              blockTrailerSignature.blockId
+            } was not the latest active block`
+          );
+          return;
+        }
+
+        let lastReceivedBlock = this.lastReceivedBlock;
+        let { forgerAddress } = lastReceivedBlock;
+
+        if (blockTrailerSignature.signerAddress !== forgerAddress) {
+          this.logger.debug(
+            `Trailer signature of account ${
+              blockTrailerSignature.signerAddress
+            } did not correspond to that of the block forger ${
+              forgerAddress
+            }`
+          );
+          return;
+        }
+
+        try {
+          await this.verifyBlockTrailerSignature(lastReceivedBlock, blockTrailerSignature);
+        } catch (error) {
+          this.logger.debug(
+            `Received invalid delegate block trailer signature - ${error.message}`
+          );
+          return;
+        }
+
+        if (this.lastReceivedTrailerSignerAddressSet.has(blockTrailerSignature.signerAddress)) {
+          this.logger.debug(
+            `Block trailer signature of delegate ${blockTrailerSignature.signerAddress} has already been received before`
+          );
+          return;
+        }
+
+        let blockHasAllTrailerSignatures = blockTrailerSignature.blockSignerAddresses.every(
+          (signerAddress) => this.lastReceivedSignerAddressSet.has(signerAddress)
+        );
+        if (!blockHasAllTrailerSignatures) {
+          this.logger.debug(
+            `Block ${
+              blockTrailerSignature.blockId
+            } was missing some signatures which were required by the block trailer`
+          );
+          return;
+        }
+
+        this.lastReceivedTrailerSignerAddressSet.add(blockTrailerSignature.signerAddress)
+        this.verifiedBlockTrailerSignatureStream.write(blockTrailerSignature);
+
+        // This is a performance optimization to ensure that peers
+        // will not receive multiple instances of the same signature at the same time.
+        let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
+        await this.wait(randomPropagationDelay);
+
+        if (blockTrailerSignature.blockId !== this.activeBlockId) {
+          this.logger.debug(
+            `Discarded block trailer signature from signer ${
+              blockTrailerSignature.signerAddress
+            } because the block ${
+              blockTrailerSignature.blockId
+            } is no longer the latest active block`
+          );
+          return;
+        }
+
+        try {
+          await this.broadcastBlockTrailerSignature(blockTrailerSignature);
         } catch (error) {
           this.logger.error(error);
         }
@@ -3151,6 +3386,7 @@ module.exports = class LDPoSChainModule {
       fetchBlockEndConfirmations: DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS,
       forgingBlockBroadcastDelay: DEFAULT_FORGING_BLOCK_BROADCAST_DELAY,
       forgingSignatureBroadcastDelay: DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY,
+      trailerSignatureBroadcastDelay: DEFAULT_TRAILER_SIGNATURE_BROADCAST_DELAY,
       autoSyncForgingKeyIndex: DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX,
       propagationTimeout: DEFAULT_PROPAGATION_TIMEOUT,
       propagationRandomness: DEFAULT_PROPAGATION_RANDOMNESS,
@@ -3358,9 +3594,9 @@ module.exports = class LDPoSChainModule {
         previousBlockId: null,
         forgerAddress: null,
         forgingPublicKey: null,
-        nextForgingPublicKey: null,
         id: null,
         forgerSignature: null,
+        trailerSignature: null,
         signatures: []
       };
     }
@@ -3379,6 +3615,7 @@ module.exports = class LDPoSChainModule {
     this.startTransactionPropagationLoop();
     this.startBlockPropagationLoop();
     this.startBlockSignaturePropagationLoop();
+    this.startBlockTrailerSignaturePropagationLoop();
     this.startBlockProcessingLoop();
 
     this.publishToChannel(`${this.alias}:bootstrap`);

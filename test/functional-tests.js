@@ -114,6 +114,7 @@ describe('Functional tests', async () => {
           forgingInterval: 5000,
           forgingBlockBroadcastDelay: 200,
           forgingSignatureBroadcastDelay: 200,
+          trailerSignatureBroadcastDelay: 2000,
           propagationRandomness: 100,
           propagationTimeout: 3000
         };
@@ -168,8 +169,6 @@ describe('Functional tests', async () => {
             assert.equal(block.timestamp % 5000, 0);
             assert.equal(block.forgerAddress, 'ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f');
             assert.equal(typeof block.forgingPublicKey, 'string');
-            assert.equal(typeof block.nextForgingPublicKey, 'string');
-            assert.equal(typeof block.nextForgingKeyIndex, 'number');
             assert.equal(typeof block.id, 'string');
             assert.equal(block.numberOfTransactions, 0);
           }
@@ -241,6 +240,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -678,6 +678,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -833,6 +834,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000,
         maxVotesPerAccount: 2
@@ -989,6 +991,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1108,6 +1111,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1333,6 +1337,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1471,6 +1476,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1586,6 +1592,7 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
+        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };

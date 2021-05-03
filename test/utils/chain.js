@@ -4,6 +4,7 @@ class LDPoSChainModule {
     this.receivedBlockList = [];
     this.receivedTransactionIdSet = new Set();
     this.receivedBlockSignatureSet = new Set();
+    this.receivedBlockTrailerSignatureSet = new Set();
   }
 
   setNetwork(network) {
@@ -28,6 +29,17 @@ class LDPoSChainModule {
         ) {
           this.receivedBlockSignatureSet.add(`${blockSignature.blockId}.${blockSignature.signerAddress}`);
           this.network.trigger('ldpos_chain', 'blockSignature', blockSignature);
+        }
+      },
+      blockTrailerSignature: async (blockTrailerSignature) => {
+        if (
+          blockTrailerSignature &&
+          blockTrailerSignature.signerAddress &&
+          blockTrailerSignature.blockId &&
+          !this.receivedBlockTrailerSignatureSet.has(`${blockTrailerSignature.blockId}.${blockTrailerSignature.signerAddress}`)
+        ) {
+          this.receivedBlockTrailerSignatureSet.add(`${blockTrailerSignature.blockId}.${blockTrailerSignature.signerAddress}`);
+          this.network.trigger('ldpos_chain', 'blockTrailerSignature', blockTrailerSignature);
         }
       },
       transaction: async (transaction) => {

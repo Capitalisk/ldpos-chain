@@ -567,7 +567,13 @@ class DAL {
   }
 
   simplifyBlock(signedBlock) {
-    let { transactions, forgerSignature, signatures, ...simpleBlock } = signedBlock;
+    let {
+      transactions,
+      forgerSignature,
+      trailerSignature,
+      signatures,
+      ...simpleBlock
+    } = signedBlock;
     return simpleBlock;
   }
 }
