@@ -3231,22 +3231,8 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        let lastReceivedBlock = this.lastReceivedBlock;
-        let { forgerAddress } = lastReceivedBlock;
-
-        if (blockTrailerSignature.signerAddress !== forgerAddress) {
-          this.logger.debug(
-            `Trailer signature of account ${
-              blockTrailerSignature.signerAddress
-            } did not correspond to that of the block forger ${
-              forgerAddress
-            }`
-          );
-          return;
-        }
-
         try {
-          await this.verifyBlockTrailerSignature(lastReceivedBlock, blockTrailerSignature);
+          await this.verifyBlockTrailerSignature(this.lastReceivedBlock, blockTrailerSignature);
         } catch (error) {
           this.logger.debug(
             `Received invalid delegate block trailer signature - ${error.message}`
