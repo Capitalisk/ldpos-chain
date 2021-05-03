@@ -21,13 +21,13 @@
   "license": "AGPL-3.0",
   "dependencies": {
     "bip39": "^3.0.3",
-    "ldpos-client": "^7.1.0",
+    "ldpos-client": "^9.0.0",
     "lite-merkle": "^1.0.1",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
-    "ldpos-knex-dal": "^3.0.0",
+    "ldpos-knex-dal": "^4.0.0",
     "mocha": "^8.2.1"
   }
 }
