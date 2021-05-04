@@ -37,9 +37,6 @@ const DEFAULT_NETWORK_SYMBOL = 'ldpos';
 const DEFAULT_CRYPTO_CLIENT_LIB_PATH = 'ldpos-client';
 const DEFAULT_FORGER_COUNT = 21;
 const DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO = .6;
-const DEFAULT_BLOCK_SIGNATURES_TO_PROVIDE = 12;
-const DEFAULT_BLOCK_SIGNATURES_TO_FETCH = 12;
-const DEFAULT_BLOCK_SIGNATURES_INDICATOR = 'bsi';
 const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
@@ -568,16 +565,12 @@ module.exports = class LDPoSChainModule {
         `Fetching new blocks from network starting at height ${nextBlockHeight}`
       );
 
-      let newBlocks
+      let newBlocks;
       let response;
 
-      // The query parameter will ensure that this request will be routed to a peer which
-      // stores a sufficient number of block signatures.
-      let actionRouteString =
-        `${this.alias}?${this.blockSignaturesIndicator}${this.blockSignaturesToFetch}=1`;
       try {
         response = await this.channel.invoke('network:request', {
-          procedure: `${actionRouteString}:getSignedBlocksFromHeight`,
+          procedure: `${this.alias}:getSignedBlocksFromHeight`,
           data: {
             height: nextBlockHeight,
             limit: fetchBlockLimit
@@ -1235,18 +1228,11 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    let blockSignaturesToStore;
-    if (blockSignatureList.length > this.blockSignaturesToProvide) {
-      blockSignaturesToStore = shuffle(blockSignatureList)
-        .slice(0, this.blockSignaturesToProvide);
-    } else {
-      blockSignaturesToStore = blockSignatureList;
-    }
-
     await this.dal.upsertBlock({
       ...block,
-      signatures: blockSignaturesToStore
+      signatures: blockSignatureList
     }, synched);
+
     this.logger.info(`Upserted block ${block.id} into data store`);
 
     // Remove transactions which have been processed as part of the current block from pending transaction maps.
@@ -1968,6 +1954,19 @@ module.exports = class LDPoSChainModule {
       );
     }
 
+    let blockSignerSet = new Set(block.signatures.map((signaturePacket) => signaturePacket.signerAddress));
+
+    let blockHasAllTrailerSignatures = blockTrailerSignature.blockSignerAddresses.every(
+      (signerAddress) => blockSignerSet.has(signerAddress)
+    );
+    if (!blockHasAllTrailerSignatures) {
+      throw new Error(
+        `Block ${
+          block.id
+        } was missing some signatures which were required by the block trailer`
+      );
+    }
+
     return this.ldposClient.verifyBlockTrailerSignature(block, blockTrailerSignature);
   }
 
@@ -2024,8 +2023,10 @@ module.exports = class LDPoSChainModule {
     return this.ldposForgingClients[forgerAddress].signBlock(block);
   }
 
-  async signBlockTrailer(forgerAddress, signedBlock) {
-    return this.ldposForgingClients[forgerAddress].signBlockTrailer(signedBlock);
+  async signBlockTrailer(forgerAddress, signedBlock, requiredSignatureCount) {
+    let blockSignerAddresses = signedBlock.signatures.map((signaturePacket) => signaturePacket.signerAddress);
+    let requiredSignerAddresses = shuffle(blockSignerAddresses).slice(requiredSignatureCount);
+    return this.ldposForgingClients[forgerAddress].signBlockTrailer(signedBlock, requiredSignerAddresses);
   }
 
   async waitUntilNextBlockTimeSlot(options) {
@@ -2210,7 +2211,6 @@ module.exports = class LDPoSChainModule {
       while (true) {
         let activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
         let blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
-        let requiredBlockSignatureCountDuringCatchUp = Math.min(blockSignerMajorityCount, this.blockSignaturesToFetch);
 
         // If the node is already on the latest network height, it will just return it.
         let { lastHeight, addedBlockCount } = await this.catchUpWithNetwork({
@@ -2218,7 +2218,7 @@ module.exports = class LDPoSChainModule {
           fetchBlockLimit,
           fetchBlockPause,
           fetchBlockEndConfirmations,
-          requiredBlockSignatureCount: requiredBlockSignatureCountDuringCatchUp,
+          requiredBlockSignatureCount: blockSignerMajorityCount,
           maxConsecutiveBlockFetchFailures
         });
         this.networkHeight = lastHeight;
@@ -2408,16 +2408,16 @@ module.exports = class LDPoSChainModule {
                 try {
                   if (clientForgerAddress === currentForgingDelegateAddress) {
                     await this.wait(trailerSignatureBroadcastDelay);
-                    let selfSignature = await this.signBlockTrailer(clientForgerAddress, block);
+                    let selfTrailerSignature = await this.signBlockTrailer(clientForgerAddress, block, blockSignerMajorityCount);
                     try {
-                      await this.verifyBlockTrailerSignature(block, selfSignature);
+                      await this.verifyBlockTrailerSignature(block, selfTrailerSignature);
                     } catch (error) {
                       throw new Error(
                         `Produced invalid delegate block trailer signature - ${error.message}`
                       );
                     }
-                    this.verifiedBlockTrailerSignatureStream.write(selfSignature);
-                    await this.broadcastBlockTrailerSignature(selfSignature);
+                    this.verifiedBlockTrailerSignatureStream.write(selfTrailerSignature);
+                    await this.broadcastBlockTrailerSignature(selfTrailerSignature);
                   } else {
                     let [ selfSignature ] = await Promise.all([
                       this.signBlock(clientForgerAddress, block),
@@ -3286,9 +3286,6 @@ module.exports = class LDPoSChainModule {
       forgingInterval: DEFAULT_FORGING_INTERVAL,
       forgerCount: DEFAULT_FORGER_COUNT,
       minForgerBlockSignatureRatio: DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO,
-      blockSignaturesToProvide: DEFAULT_BLOCK_SIGNATURES_TO_PROVIDE,
-      blockSignaturesToFetch: DEFAULT_BLOCK_SIGNATURES_TO_FETCH,
-      blockSignaturesIndicator: DEFAULT_BLOCK_SIGNATURES_INDICATOR,
       fetchBlockLimit: DEFAULT_FETCH_BLOCK_LIMIT,
       fetchBlockPause: DEFAULT_FETCH_BLOCK_PAUSE,
       fetchBlockEndConfirmations: DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS,
@@ -3341,9 +3338,6 @@ module.exports = class LDPoSChainModule {
     this.forgingInterval = this.options.forgingInterval;
     this.forgerCount = this.options.forgerCount;
     this.minForgerBlockSignatureRatio = this.options.minForgerBlockSignatureRatio;
-    this.blockSignaturesToProvide = this.options.blockSignaturesToProvide;
-    this.blockSignaturesToFetch = this.options.blockSignaturesToFetch;
-    this.blockSignaturesIndicator = this.options.blockSignaturesIndicator;
     this.autoSyncForgingKeyIndex = this.options.autoSyncForgingKeyIndex;
     this.propagationRandomness = this.options.propagationRandomness;
     this.minMultisigMembers = this.options.minMultisigMembers;
@@ -3381,49 +3375,6 @@ module.exports = class LDPoSChainModule {
       );
     }
     this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
-
-    if (!Number.isInteger(this.blockSignaturesToProvide) || this.blockSignaturesToProvide < 0) {
-      throw new Error(
-        'The blockSignaturesToProvide option must be an integer greater than or equal to 0'
-      );
-    }
-
-    if (!Number.isInteger(this.blockSignaturesToFetch)) {
-      throw new Error(
-        'The blockSignaturesToFetch option must be an integer'
-      );
-    }
-    if (this.blockSignaturesToFetch < this.blockSignaturesToProvide) {
-      throw new Error(
-        `The blockSignaturesToFetch option was less than ${
-          this.blockSignaturesToProvide
-        } - It cannot be less than the blockSignaturesToProvide option`
-      );
-    }
-
-    let moduleState = {};
-
-    // Create an entry for each key index so that other peers can route requests to us based
-    // on how many block signatures we keep.
-    for (let i = 0; i <= this.blockSignaturesToProvide; i++) {
-      moduleState[`${this.blockSignaturesIndicator}${i}`] = 1;
-    }
-
-    let majorityBlockSignatureCount = Math.floor(this.forgerCount * this.minForgerBlockSignatureRatio);
-
-    if (this.blockSignaturesToProvide >= majorityBlockSignatureCount) {
-      moduleState.providesMostBlockSignatures = true;
-    } else {
-      this.logger.warn(
-        new Error(
-          `The blockSignaturesToProvide option was ${
-            this.blockSignaturesToProvide
-          } which is less than the required delegate majority of ${
-            majorityBlockSignatureCount
-          } - Node will operate in lite mode`
-        )
-      );
-    }
 
     this.cryptoClientLibPath = this.options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
     let { createClient } = require(this.cryptoClientLibPath);
@@ -3510,14 +3461,6 @@ module.exports = class LDPoSChainModule {
     }
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastSignedBlock = this.lastProcessedBlock;
-
-    if (this.blockSignaturesToProvide >= this.forgerCount - 1) {
-      moduleState.providesAllBlockSignatures = true;
-    }
-
-    await this.channel.invoke('app:updateModuleState', {
-      [this.alias]: moduleState
-    });
 
     this.startPendingTransactionExpiryLoop();
     this.startTransactionPropagationLoop();
