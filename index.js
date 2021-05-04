@@ -684,8 +684,8 @@ module.exports = class LDPoSChainModule {
             senderAccountDetails,
           } = await this.verifyFullySignedBlock(block, this.lastProcessedBlock);
 
-          let chainStateChanged = await this.blockAffectsChainState(block);
-          if (!chainStateChanged) {
+          let blockSignificant = await this.isBlockSignificant(block);
+          if (!blockSignificant) {
             throw new Error(`Block ${block.id} did not affect the chain state`);
           }
           await this.processBlock(block, senderAccountDetails, true);
@@ -1327,7 +1327,7 @@ module.exports = class LDPoSChainModule {
     this.logger.info(`Finished processing block ${block.id} at height ${block.height}`);
   }
 
-  async blockAffectsChainState(block) {
+  async isBlockSignificant(block) {
     let delegateAccount = await this.getSanitizedAccount(block.forgerAddress);
     return (
       block.transactions.length >= this.minTransactionsPerBlock ||
@@ -2455,8 +2455,8 @@ module.exports = class LDPoSChainModule {
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
 
           // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
-          let chainStateChanged = await this.blockAffectsChainState(block);
-          if (chainStateChanged) {
+          let blockSignificant = await this.isBlockSignificant(block);
+          if (blockSignificant) {
             await this.processBlock(block, senderAccountDetails, false);
             this.lastSignedBlock = block;
 
