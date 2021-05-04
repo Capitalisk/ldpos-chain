@@ -1893,6 +1893,12 @@ module.exports = class LDPoSChainModule {
       );
     }
 
+    if (!this.topActiveDelegateAddressSet.has(signerAddress)) {
+      throw new Error(
+        `Account ${signerAddress} is not a top active delegate and therefore cannot be a block signer`
+      );
+    }
+
     let signerAccount;
     try {
       signerAccount = await this.getSanitizedAccount(signerAddress);
@@ -1910,12 +1916,6 @@ module.exports = class LDPoSChainModule {
         `Block signature forgingPublicKey did not match the forgingPublicKey or nextForgingPublicKey of the signer account ${
           signerAddress
         }`
-      );
-    }
-
-    if (!this.topActiveDelegateAddressSet.has(signerAddress)) {
-      throw new Error(
-        `Account ${signerAddress} is not a top active delegate and therefore cannot be a block signer`
       );
     }
 
