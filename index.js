@@ -686,7 +686,7 @@ module.exports = class LDPoSChainModule {
 
           let blockSignificant = await this.isBlockSignificant(block);
           if (!blockSignificant) {
-            throw new Error(`Block ${block.id} did not affect the chain state`);
+            throw new Error(`Block ${block.id} was not significant; it should not be part of the chain`);
           }
           await this.processBlock(block, senderAccountDetails, true);
           addedBlockCount++;
