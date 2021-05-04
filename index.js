@@ -132,7 +132,6 @@ module.exports = class LDPoSChainModule {
     this.ldposForgingClients = {};
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
-    this.verifiedBlockSignatureStream = new WritableConsumableStream();
     this.verifiedBlockTrailerSignatureStream = new WritableConsumableStream();
 
     this.isActive = false;
@@ -725,45 +724,6 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  async receiveLastBlockSignatures(lastBlock, requiredCount, timeout) {
-    this.verifiedBlockSignatureStream.kill();
-    let signerSet = new Set(
-      lastBlock.signatures.map(blockSignature => blockSignature.signerAddress)
-    );
-    if (signerSet.size >= requiredCount) {
-      return lastBlock.signatures;
-    }
-    while (true) {
-      let startTime = Date.now();
-      let blockSignature;
-      try {
-        blockSignature = await this.verifiedBlockSignatureStream.once(timeout);
-      } catch (error) {
-        throw new Error(
-          `Failed to receive enough block signatures before timeout - Received ${
-            signerSet.size
-          } out of ${
-            requiredCount
-          } required signatures`
-        );
-      }
-      let { blockId } = blockSignature;
-      if (blockId === lastBlock.id && !signerSet.has(blockSignature.signerAddress)) {
-        lastBlock.signatures.push(blockSignature);
-        signerSet.add(blockSignature.signerAddress);
-        if (signerSet.size >= requiredCount) {
-          break;
-        }
-      }
-      let timeDiff = Date.now() - startTime;
-      timeout -= timeDiff;
-      if (timeout < 0) {
-        timeout = 0;
-      }
-    }
-    return lastBlock.signatures;
-  }
-
   async receiveLastBlockTrailerSignatures(lastSignedBlock, requiredCount, timeout) {
     this.verifiedBlockTrailerSignatureStream.kill();
     if (lastSignedBlock.trailerSignature) {
@@ -785,6 +745,7 @@ module.exports = class LDPoSChainModule {
       let { blockId, blockSignerAddresses } = blockTrailerSignature;
       if (blockId === lastSignedBlock.id && blockSignerAddresses.length >= requiredCount) {
         lastSignedBlock.trailerSignature = blockTrailerSignature;
+        this.lastReceivedTrailerSignerAddressSet.add(blockTrailerSignature.signerAddress);
         break;
       }
       let timeDiff = Date.now() - startTime;
@@ -2452,7 +2413,6 @@ module.exports = class LDPoSChainModule {
                   if (clientForgerAddress === currentForgingDelegateAddress) {
                     await this.wait(trailerSignatureBroadcastDelay);
                     let selfSignature = await this.signBlockTrailer(clientForgerAddress, block);
-                    this.lastReceivedTrailerSignerAddressSet.add(selfSignature.signerAddress);
                     try {
                       await this.verifyBlockTrailerSignature(block, selfSignature);
                     } catch (error) {
@@ -2467,7 +2427,6 @@ module.exports = class LDPoSChainModule {
                       this.signBlock(clientForgerAddress, block),
                       this.wait(forgingSignatureBroadcastDelay)
                     ]);
-                    this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
                     if (this.lastDoubleForgedBlockTimestamp === block.timestamp) {
                       throw new Error(
                         `Refused to send signature for block ${
@@ -2484,7 +2443,8 @@ module.exports = class LDPoSChainModule {
                         `Produced invalid delegate block signature - ${error.message}`
                       );
                     }
-                    this.verifiedBlockSignatureStream.write(selfSignature);
+                    this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
+                    block.signatures.push(selfSignature);
                     await this.broadcastBlockSignature(selfSignature);
                   }
                 } catch (error) {
@@ -2493,7 +2453,6 @@ module.exports = class LDPoSChainModule {
               }
             }),
             // Will throw if the required number of valid signatures cannot be gathered in time.
-            this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout),
             this.receiveLastBlockTrailerSignatures(block, blockSignerMajorityCount, trailerSignatureBroadcastDelay + propagationTimeout)
           ]);
 
@@ -3171,8 +3130,8 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress)
-        this.verifiedBlockSignatureStream.write(blockSignature);
+        this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress);
+        lastReceivedBlock.signatures.push(blockSignature);
 
         // This is a performance optimization to ensure that peers
         // will not receive multiple instances of the same signature at the same time.
@@ -3249,7 +3208,6 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        this.lastReceivedTrailerSignerAddressSet.add(blockTrailerSignature.signerAddress)
         this.verifiedBlockTrailerSignatureStream.write(blockTrailerSignature);
 
         // This is a performance optimization to ensure that peers
