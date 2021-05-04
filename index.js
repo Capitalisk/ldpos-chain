@@ -684,11 +684,11 @@ module.exports = class LDPoSChainModule {
 
           let {
             senderAccountDetails,
-            delegateChangedKeys
           } = await this.verifyFullySignedBlock(block, this.lastProcessedBlock);
 
-          if (!this.blockMeetsRequirements(block, delegateChangedKeys)) {
-            throw new Error(`Block ${block.id} did not meet processing requirements`);
+          let chainStateChanged = await this.blockAffectsChainState(block);
+          if (!chainStateChanged) {
+            throw new Error(`Block ${block.id} did not affect the chain state`);
           }
           await this.processBlock(block, senderAccountDetails, true);
           addedBlockCount++;
@@ -1367,8 +1367,13 @@ module.exports = class LDPoSChainModule {
     this.logger.info(`Finished processing block ${block.id} at height ${block.height}`);
   }
 
-  blockMeetsRequirements(block, delegateChangedKeys) {
-    return block.transactions.length >= this.minTransactionsPerBlock || delegateChangedKeys;
+  async blockAffectsChainState(block) {
+    let delegateAccount = await this.getSanitizedAccount(block.forgerAddress);
+    return (
+      block.transactions.length >= this.minTransactionsPerBlock ||
+      delegateAccount.nextForgingPublicKey == null ||
+      block.trailerSignature.forgingPublicKey !== delegateAccount.forgingPublicKey
+    );
   }
 
   async verifyTransactionDoesNotAlreadyExist(transaction) {
@@ -1732,18 +1737,6 @@ module.exports = class LDPoSChainModule {
     return blockInfo;
   }
 
-  hasDelegateChangedForgingKeys(block, delegateAccount) {
-    let isBlockForgingKeyDifferent = (
-      block.forgingPublicKey !== delegateAccount.forgingPublicKey ||
-      delegateAccount.nextForgingPublicKey == null
-    );
-    if (block.trailerSignature) {
-      return isBlockForgingKeyDifferent ||
-        block.trailerSignature.forgingPublicKey !== delegateAccount.forgingPublicKey;
-    }
-    return isBlockForgingKeyDifferent;
-  }
-
   async verifyForgedBlock(block, lastBlock) {
     if (block.id === lastBlock.id) {
       throw new Error(`Block ${block.id} has already been received`);
@@ -1808,8 +1801,7 @@ module.exports = class LDPoSChainModule {
     }
     let senderAccountDetails = await this.verifyBlockTransactions(block);
     return {
-      senderAccountDetails,
-      delegateChangedKeys: this.hasDelegateChangedForgingKeys(block, targetDelegateAccount)
+      senderAccountDetails
     };
   }
 
@@ -2317,7 +2309,6 @@ module.exports = class LDPoSChainModule {
         let currentForgingDelegateAddress = this.getForgingDelegateAddressAtTimestamp(blockTimestamp);
         let block;
         let senderAccountDetails;
-        let delegateChangedKeys;
 
         if (this.ldposForgingClients[currentForgingDelegateAddress]) {
           let validTransactions = [];
@@ -2403,7 +2394,6 @@ module.exports = class LDPoSChainModule {
             this.dal.getAccount(currentForgingDelegateAddress)
           ]);
           block = forgedBlock;
-          delegateChangedKeys = this.hasDelegateChangedForgingKeys(block, forgerAccount);
 
           this.lastReceivedSignerAddressSet.clear();
           this.lastReceivedTrailerSignerAddressSet.clear();
@@ -2427,7 +2417,6 @@ module.exports = class LDPoSChainModule {
               let blockInfo = await this.receiveLastBlockInfo(forgingBlockBroadcastDelay + propagationTimeout);
               block = blockInfo.block;
               senderAccountDetails = blockInfo.senderAccountDetails;
-              delegateChangedKeys = blockInfo.delegateChangedKeys;
               this.logger.info(
                 `Received valid block ${
                   block.id
@@ -2511,7 +2500,8 @@ module.exports = class LDPoSChainModule {
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
 
           // Only process the block if it has transactions or if the forging delegate wants to change their forging key.
-          if (this.blockMeetsRequirements(block, delegateChangedKeys)) {
+          let chainStateChanged = await this.blockAffectsChainState(block);
+          if (chainStateChanged) {
             await this.processBlock(block, senderAccountDetails, false);
             this.lastSignedBlock = block;
 
@@ -3006,7 +2996,6 @@ module.exports = class LDPoSChainModule {
         this.logger.info(`Received block ${block && block.id}`);
 
         let senderAccountDetails;
-        let delegateChangedKeys;
         try {
           validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, false, this.networkSymbol);
 
@@ -3017,7 +3006,6 @@ module.exports = class LDPoSChainModule {
 
           let blockInfo = await this.verifyForgedBlock(block, this.lastProcessedBlock);
           senderAccountDetails = blockInfo.senderAccountDetails;
-          delegateChangedKeys = blockInfo.delegateChangedKeys;
           let currentBlockTimeSlot = this.getCurrentBlockTimeSlot(this.forgingInterval);
           if (block.timestamp !== currentBlockTimeSlot) {
             throw new Error(
@@ -3127,8 +3115,7 @@ module.exports = class LDPoSChainModule {
         this.lastReceivedBlock = block;
         this.verifiedBlockInfoStream.write({
           block: this.lastReceivedBlock,
-          senderAccountDetails,
-          delegateChangedKeys
+          senderAccountDetails
         });
 
         await this.propagateBlock(block, true);
