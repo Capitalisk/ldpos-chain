@@ -1931,7 +1931,7 @@ module.exports = class LDPoSChainModule {
 
     if (blockTrailerSignature.blockId !== block.id) {
       throw new Error(
-        `Received block trailer signature for a different block from signer ${
+        `Block trailer signature was for a different block from signer ${
           signerAddress
         } - Expected signature for block with ID ${
           block.id
