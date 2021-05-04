@@ -125,7 +125,6 @@ module.exports = class LDPoSChainModule {
     this.topActiveDelegateAddressSet = new Set();
     this.lastSignedBlock = null;
     this.lastProcessedBlock = null;
-    this.activeBlockId = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
     this.lastReceivedTrailerSignerAddressSet = new Set();
@@ -1885,9 +1884,9 @@ module.exports = class LDPoSChainModule {
 
     if (blockSignature.blockId !== block.id) {
       throw new Error(
-        `Received block signature for a different block from signer ${
+        `Block signature from signer ${
           signerAddress
-        } - Expected signature for block with ID ${
+        } was for a different block - Expected signature for block with ID ${
           block.id
         }`
       );
@@ -2259,8 +2258,6 @@ module.exports = class LDPoSChainModule {
           timePollInterval
         });
 
-        this.activeBlockId = null;
-
         if (!this.isActive) {
           this.resolveUnload && this.resolveUnload();
           break;
@@ -2402,7 +2399,6 @@ module.exports = class LDPoSChainModule {
               continue;
             }
           }
-          this.activeBlockId = block.id;
 
           let forgingAddressList = Object.keys(this.ldposForgingClients);
 
@@ -3093,17 +3089,6 @@ module.exports = class LDPoSChainModule {
 
         this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
 
-        if (blockSignature.blockId !== this.activeBlockId) {
-          this.logger.debug(
-            `Discarded block signature from signer ${
-              blockSignature.signerAddress
-            } because the block ${
-              blockSignature.blockId
-            } was not the latest active block`
-          );
-          return;
-        }
-
         let lastReceivedBlock = this.lastReceivedBlock;
         let { forgerAddress } = lastReceivedBlock;
 
@@ -3138,7 +3123,7 @@ module.exports = class LDPoSChainModule {
         let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
         await this.wait(randomPropagationDelay);
 
-        if (blockSignature.blockId !== this.activeBlockId) {
+        if (blockSignature.blockId !== this.lastReceivedBlock.id) {
           this.logger.debug(
             `Discarded block signature from signer ${
               blockSignature.signerAddress
@@ -3168,17 +3153,6 @@ module.exports = class LDPoSChainModule {
         validateBlockTrailerSignatureSchema(blockTrailerSignature, this.forgerCount, this.networkSymbol);
 
         this.logger.info(`Received block trailer signature from signer ${blockTrailerSignature.signerAddress}`);
-
-        if (blockTrailerSignature.blockId !== this.activeBlockId) {
-          this.logger.debug(
-            `Discarded block trailer signature from signer ${
-              blockTrailerSignature.signerAddress
-            } because the block ${
-              blockTrailerSignature.blockId
-            } was not the latest active block`
-          );
-          return;
-        }
 
         try {
           await this.verifyBlockTrailerSignature(this.lastReceivedBlock, blockTrailerSignature);
@@ -3215,7 +3189,7 @@ module.exports = class LDPoSChainModule {
         let randomPropagationDelay = Math.round(Math.random() * this.propagationRandomness);
         await this.wait(randomPropagationDelay);
 
-        if (blockTrailerSignature.blockId !== this.activeBlockId) {
+        if (blockTrailerSignature.blockId !== this.lastReceivedBlock.id) {
           this.logger.debug(
             `Discarded block trailer signature from signer ${
               blockTrailerSignature.signerAddress
