@@ -22,7 +22,7 @@ const validPropertyList = [
 function validateBlockTrailerSignatureSchema(blockTrailerSignature, maxAddresses, networkSymbol) {
   if (!blockTrailerSignature) {
     throw new Error(
-      'Block signature was not specified'
+      'Block trailer signature was not specified'
     );
   }
   validateBlockId('blockId', blockTrailerSignature);
@@ -34,12 +34,12 @@ function validateBlockTrailerSignatureSchema(blockTrailerSignature, maxAddresses
 
   let blockSignerAddresses = blockTrailerSignature.blockSignerAddresses;
   if (!Array.isArray(blockSignerAddresses)) {
-    throw new Error('Block blockSignerAddresses must be an array');
+    throw new Error('Block trailer blockSignerAddresses must be an array');
   }
 
   if (blockSignerAddresses.length > maxAddresses) {
     throw new Error(
-      `Block blockSignerAddresses array contained more than the maximum number of ${
+      `Block trailer blockSignerAddresses array contained more than the maximum number of ${
         maxAddresses
       } addresses`
     );
@@ -50,17 +50,24 @@ function validateBlockTrailerSignatureSchema(blockTrailerSignature, maxAddresses
       validateWalletAddressValue(blockSignerAddress, networkSymbol);
     } catch (error) {
       throw new Error(
-        `Block blockSignerAddresses must contain valid wallet addresses - ${
+        `Block trailer blockSignerAddresses must contain valid wallet addresses - ${
           error.message
         }`
       );
     }
   }
 
+  let blockSignerSet = new Set(blockSignerAddresses);
+  if (blockSignerAddresses.length !== blockSignerSet.size) {
+    throw new Error(
+      `Block trailer blockSignerAddresses contained duplicate values`
+    );
+  }
+
   let invalidProperty = findInvalidProperty(blockTrailerSignature, validPropertyList);
   if (invalidProperty) {
     throw new Error(
-      `Block contained a signature which had an invalid ${invalidProperty} property`
+      `Block trailer contained a signature which had an invalid ${invalidProperty} property`
     );
   }
 }
