@@ -729,30 +729,30 @@ module.exports = class LDPoSChainModule {
       return;
     }
 
-    while (true) {
-      let startTime = Date.now();
-      let blockTrailerSignature;
-      try {
-        blockTrailerSignature = await this.verifiedBlockTrailerSignatureStream.once(timeout);
-      } catch (error) {
-        throw new Error(
-          `Failed to receive block trailer signature of forger ${
-            lastSignedBlock.forgerAddress
-          } before timeout`
-        );
-      }
-      let { blockId, blockSignerAddresses } = blockTrailerSignature;
-      if (blockId === lastSignedBlock.id && blockSignerAddresses.length >= requiredCount) {
-        lastSignedBlock.trailerSignature = blockTrailerSignature;
-        this.lastReceivedTrailerSignerAddressSet.add(blockTrailerSignature.signerAddress);
-        break;
-      }
-      let timeDiff = Date.now() - startTime;
-      timeout -= timeDiff;
-      if (timeout < 0) {
-        timeout = 0;
-      }
+    let blockTrailerSignature;
+    try {
+      blockTrailerSignature = await this.verifiedBlockTrailerSignatureStream.once(timeout);
+    } catch (error) {
+      throw new Error(
+        `Failed to receive block trailer signature of forger ${
+          lastSignedBlock.forgerAddress
+        } before timeout`
+      );
     }
+
+    let { blockSignerAddresses } = blockTrailerSignature;
+    if (blockSignerAddresses.length < requiredCount) {
+      throw new Error(
+        `Block trailer signature did not refer to enough signer addresses - List length was ${
+          blockSignerAddresses.length
+        } but it had to be at least ${
+          requiredCount
+        }`
+      );
+    }
+
+    lastSignedBlock.trailerSignature = blockTrailerSignature;
+    this.lastReceivedTrailerSignerAddressSet.add(blockTrailerSignature.signerAddress);
   }
 
   getCurrentBlockTimeSlot(forgingInterval) {
