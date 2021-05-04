@@ -46,10 +46,10 @@ const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
 const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
-const DEFAULT_TRAILER_SIGNATURE_BROADCAST_DELAY = 20000;
+const DEFAULT_TRAILER_SIGNATURE_BROADCAST_DELAY = 14000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 8000;
-const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
+const DEFAULT_PROPAGATION_TIMEOUT = 5000;
+const DEFAULT_PROPAGATION_RANDOMNESS = 2000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
@@ -715,6 +715,7 @@ module.exports = class LDPoSChainModule {
   }
 
   async receiveLastBlockInfo(timeout) {
+    this.verifiedBlockInfoStream.kill();
     try {
       return await this.verifiedBlockInfoStream.once(timeout);
     } catch (error) {
@@ -725,6 +726,7 @@ module.exports = class LDPoSChainModule {
   }
 
   async receiveLastBlockSignatures(lastBlock, requiredCount, timeout) {
+    this.verifiedBlockSignatureStream.kill();
     let signerSet = new Set(
       lastBlock.signatures.map(blockSignature => blockSignature.signerAddress)
     );
@@ -763,6 +765,7 @@ module.exports = class LDPoSChainModule {
   }
 
   async receiveLastBlockTrailerSignatures(lastSignedBlock, requiredCount, timeout) {
+    this.verifiedBlockTrailerSignatureStream.kill();
     if (lastSignedBlock.trailerSignature) {
       return;
     }
