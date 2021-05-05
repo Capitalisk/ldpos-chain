@@ -736,9 +736,9 @@ module.exports = class LDPoSChainModule {
     let { blockSignerAddresses } = blockTrailerSignature;
     if (blockSignerAddresses.length < requiredCount) {
       throw new Error(
-        `Block trailer signature did not refer to enough signer addresses - List length was ${
+        `Block trailer signature blockSignerAddresses did not have enough addresses - It had ${
           blockSignerAddresses.length
-        } but it had to be at least ${
+        } addresses but it had to have at least ${
           requiredCount
         }`
       );
@@ -2025,7 +2025,7 @@ module.exports = class LDPoSChainModule {
 
   async signBlockTrailer(forgerAddress, signedBlock, requiredSignatureCount) {
     let blockSignerAddresses = signedBlock.signatures.map((signaturePacket) => signaturePacket.signerAddress);
-    let requiredSignerAddresses = shuffle(blockSignerAddresses).slice(requiredSignatureCount);
+    let requiredSignerAddresses = shuffle(blockSignerAddresses).slice(0, requiredSignatureCount);
     return this.ldposForgingClients[forgerAddress].signBlockTrailer(signedBlock, requiredSignerAddresses);
   }
 
