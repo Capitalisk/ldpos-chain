@@ -727,7 +727,7 @@ module.exports = class LDPoSChainModule {
       blockTrailerSignature = await this.verifiedBlockTrailerSignatureStream.once(timeout);
     } catch (error) {
       throw new Error(
-        `Failed to receive block trailer signature of forger ${
+        `Failed to receive a valid block trailer signature of forger ${
           lastSignedBlock.forgerAddress
         } before timeout`
       );
