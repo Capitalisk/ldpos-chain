@@ -3462,6 +3462,10 @@ module.exports = class LDPoSChainModule {
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastSignedBlock = this.lastProcessedBlock;
 
+    await this.channel.invoke('app:updateModuleState', {
+      [this.alias]: {}
+    });
+
     this.startPendingTransactionExpiryLoop();
     this.startTransactionPropagationLoop();
     this.startBlockPropagationLoop();
