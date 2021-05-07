@@ -345,7 +345,7 @@ class DAL {
     return this.blocks.some(currentBlock => currentBlock.id === id);
   }
 
-  async getBlock(id) {
+  async getSignedBlock(id) {
     let block = this.blocks.find(currentBlock => currentBlock.id === id);
     if (!block) {
       let error = new Error(
@@ -356,6 +356,11 @@ class DAL {
       throw error;
     }
     return {...block};
+  }
+
+  async getBlock(id) {
+    let block = this.getSignedBlock(id);
+    return this.simplifyBlock(block);
   }
 
   async getBlocksByTimestamp(offset, limit, order) {
