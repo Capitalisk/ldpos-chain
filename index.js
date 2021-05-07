@@ -2928,7 +2928,7 @@ module.exports = class LDPoSChainModule {
 
         for (let txn of transactions) {
           let pendingTxnStream = this.pendingTransactionStreams[txn.senderAddress];
-          if (!pendingTxnStream) {
+          if (!pendingTxnStream || !pendingTxnStream.transactionInfoMap.has(txn.id)) {
             this.logger.debug(
               `Block ${block.id} contained an unrecognized transaction ${txn.id}`
             );
