@@ -10,7 +10,6 @@ const {
 } = require('./primitives');
 
 const { validateBlockSignatureSchema } = require('./block-signature-schema');
-const { validateBlockTrailerSignatureSchema } = require('./block-trailer-signature-schema');
 const { findInvalidProperty } = require('./find-invalid-property');
 
 const validPropertyList = [
@@ -22,12 +21,13 @@ const validPropertyList = [
   'transactions',
   'forgerAddress',
   'forgingPublicKey',
+  'nextForgingPublicKey',
+  'nextForgingKeyIndex',
   'forgerSignature',
-  'trailerSignature',
   'signatures'
 ];
 
-function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerBlock, minSignatures, maxSignatures, requireTrailerSignature, networkSymbol) {
+function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerBlock, minSignatures, maxSignatures, networkSymbol) {
   if (!block) {
     throw new Error('Block was not specified');
   }
@@ -60,11 +60,9 @@ function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerB
   validateWalletAddress('forgerAddress', block, networkSymbol);
   validateBlockId('id', block);
   validatePublicKey('forgingPublicKey', block);
+  validatePublicKey('nextForgingPublicKey', block);
+  validateKeyIndex('nextForgingKeyIndex', block);
   validateSignature('forgerSignature', block);
-
-  if (requireTrailerSignature) {
-    validateBlockTrailerSignatureSchema(block.trailerSignature, maxSignatures, networkSymbol);
-  }
 
   if (!Array.isArray(block.signatures)) {
     throw new Error('Block signatures must be an array');

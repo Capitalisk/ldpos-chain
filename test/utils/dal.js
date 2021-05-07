@@ -424,6 +424,31 @@ class DAL {
       });
   }
 
+  async getAccountTransactions(walletAddress, fromTimestamp, offset, limit, order) {
+    let transactionList = this.sortByProperty(Object.values(this.transactions), 'timestamp', order);
+
+    let accountTransactions = [];
+    for (let transaction of transactionList) {
+      if (
+        (
+          transaction.recipientAddress === walletAddress ||
+          transaction.senderAddress === walletAddress
+        ) &&
+        (
+          fromTimestamp == null ||
+          (
+            order === 'desc' ? transaction.timestamp <= fromTimestamp : transaction.timestamp >= fromTimestamp
+          )
+        )
+      ) {
+        accountTransactions.push(transaction);
+      }
+    }
+    return accountTransactions.map((transaction) => {
+      return {...transaction};
+    }).slice(offset, offset + limit);
+  }
+
   async getInboundTransactions(walletAddress, fromTimestamp, offset, limit, order) {
     let transactionList = this.sortByProperty(Object.values(this.transactions), 'timestamp', order);
 
@@ -570,7 +595,6 @@ class DAL {
     let {
       transactions,
       forgerSignature,
-      trailerSignature,
       signatures,
       ...simpleBlock
     } = signedBlock;

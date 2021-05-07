@@ -114,7 +114,6 @@ describe('Functional tests', async () => {
           forgingInterval: 5000,
           forgingBlockBroadcastDelay: 200,
           forgingSignatureBroadcastDelay: 200,
-          trailerSignatureBroadcastDelay: 2000,
           propagationRandomness: 100,
           propagationTimeout: 3000
         };
@@ -240,7 +239,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -678,7 +676,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -834,7 +831,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000,
         maxVotesPerAccount: 2
@@ -991,7 +987,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1111,7 +1106,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1337,7 +1331,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1476,7 +1469,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1592,7 +1584,6 @@ describe('Functional tests', async () => {
         forgingInterval: 5000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
-        trailerSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
