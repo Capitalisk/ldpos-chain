@@ -2,8 +2,8 @@ const {
   validateSignature,
   validateWalletAddress,
   validateBlockId,
-  validateKeyIndex,
-  validatePublicKey
+  validatePublicKey,
+  validateKeyIndex
 } = require('./primitives');
 
 const { findInvalidProperty } = require('./find-invalid-property');

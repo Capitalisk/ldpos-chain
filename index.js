@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const shuffle = require('lodash.shuffle');
 const WritableConsumableStream = require('writable-consumable-stream');
 
 const genesisBlock = require('./genesis/testnet/genesis.json');
@@ -34,6 +35,8 @@ const DEFAULT_GENESIS_PATH = './genesis/mainnet/genesis.json';
 const DEFAULT_NETWORK_SYMBOL = 'ldpos';
 const DEFAULT_CRYPTO_CLIENT_LIB_PATH = 'ldpos-client';
 const DEFAULT_FORGER_COUNT = 15;
+const DEFAULT_FORGING_KEY_CHANGES_PROBABILITY = .5;
+const DEFAULT_MAX_FORGING_KEY_CHANGES_RATIO = .5;
 const DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO = .6;
 const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
@@ -687,6 +690,7 @@ module.exports = class LDPoSChainModule {
             this.maxTransactionsPerBlock,
             requiredBlockSignatureCount,
             this.forgerCount,
+            this.forgerCount,
             this.networkSymbol
           );
 
@@ -790,9 +794,14 @@ module.exports = class LDPoSChainModule {
     return crypto.createHash('sha256').update(message, 'utf8').digest(encoding || 'base64');
   }
 
-  async forgeBlock(forgerAddress, height, timestamp, transactions) {
-    // TODO 222 Instead of adding the forgingKeyChanges list every time, do it based on a random probability like 50% chance or select a sub-sample
-    let forgingKeyChanges = [...this.pendingForgingKeyChangeMap.values()];
+  async forgeBlock(forgerAddress, height, timestamp, transactions, maxForgingKeyChanges) {
+    let forgingKeyChanges;
+    if (Math.random() < this.forgingKeyChangesProbability) {
+      forgingKeyChanges = shuffle([...this.pendingForgingKeyChangeMap.values()])
+        .slice(0, maxForgingKeyChanges);
+    } else {
+      forgingKeyChanges = [];
+    }
     let blockData = {
       height,
       timestamp,
@@ -2344,7 +2353,7 @@ module.exports = class LDPoSChainModule {
           let pendingTransactions = this.sortPendingTransactions(validTransactions);
           let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
           let [ forgedBlock, forgerAccount ] = await Promise.all([
-            this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
+            this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions, blockSignerMajorityCount),
             this.dal.getAccount(currentForgingDelegateAddress)
           ]);
           block = forgedBlock;
@@ -3005,7 +3014,7 @@ module.exports = class LDPoSChainModule {
 
   async startBlockPropagationLoop() {
     let channel = this.channel;
-    channel.subscribe(`network:event:${this.alias}:block`, (event) => {// TODO 222 validate forgingKeyChanges as part of block schema
+    channel.subscribe(`network:event:${this.alias}:block`, (event) => {
       // Process blocks in parallel.
       (async () => {
         let block = event.data;
@@ -3013,7 +3022,7 @@ module.exports = class LDPoSChainModule {
 
         let senderAccountDetails;
         try {
-          validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
+          validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.forgerCount, this.networkSymbol);
 
           if (block.id === this.lastReceivedBlock.id) {
             this.logger.debug(`Block ${block.id} has already been received before`);
@@ -3318,6 +3327,8 @@ module.exports = class LDPoSChainModule {
     let defaultOptions = {
       forgingInterval: DEFAULT_FORGING_INTERVAL,
       forgerCount: DEFAULT_FORGER_COUNT,
+      maxForgingKeyChangesRatio: DEFAULT_MAX_FORGING_KEY_CHANGES_RATIO,
+      forgingKeyChangesProbability: DEFAULT_FORGING_KEY_CHANGES_PROBABILITY,
       minForgerBlockSignatureRatio: DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO,
       fetchBlockLimit: DEFAULT_FETCH_BLOCK_LIMIT,
       fetchBlockPause: DEFAULT_FETCH_BLOCK_PAUSE,
@@ -3369,6 +3380,8 @@ module.exports = class LDPoSChainModule {
 
     this.forgingInterval = this.options.forgingInterval;
     this.forgerCount = this.options.forgerCount;
+    this.maxForgingKeyChangesRatio = this.options.maxForgingKeyChangesRatio;
+    this.forgingKeyChangesProbability = this.options.forgingKeyChangesProbability;
     this.minForgerBlockSignatureRatio = this.options.minForgerBlockSignatureRatio;
     this.autoSyncForgingKeyIndex = this.options.autoSyncForgingKeyIndex;
     this.propagationRandomness = this.options.propagationRandomness;
