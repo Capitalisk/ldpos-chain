@@ -42,11 +42,11 @@ const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
-const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
-const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
+const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 3000;
+const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 9000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 5000;
-const DEFAULT_PROPAGATION_RANDOMNESS = 2000;
+const DEFAULT_PROPAGATION_TIMEOUT = 7000;
+const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
@@ -128,7 +128,6 @@ module.exports = class LDPoSChainModule {
     this.ldposForgingClients = {};
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
-    this.verifiedBlockSignatureStream = new WritableConsumableStream();
 
     this.isActive = false;
   }
@@ -735,45 +734,6 @@ module.exports = class LDPoSChainModule {
         `Timed out while waiting to receive the latest block from the network`
       );
     }
-  }
-
-  async receiveLastBlockSignatures(lastBlock, requiredCount, timeout) {
-    this.verifiedBlockSignatureStream.kill();
-    let signerSet = new Set(
-      lastBlock.signatures.map(blockSignature => blockSignature.signerAddress)
-    );
-    if (signerSet.size >= requiredCount) {
-      return lastBlock.signatures;
-    }
-    while (true) {
-      let startTime = Date.now();
-      let blockSignature;
-      try {
-        blockSignature = await this.verifiedBlockSignatureStream.once(timeout);
-      } catch (error) {
-        throw new Error(
-          `Failed to receive enough block signatures before timeout - Received ${
-            signerSet.size
-          } out of ${
-            requiredCount
-          } required signatures`
-        );
-      }
-      let { blockId } = blockSignature;
-      if (blockId === lastBlock.id && !signerSet.has(blockSignature.signerAddress)) {
-        lastBlock.signatures.push(blockSignature);
-        signerSet.add(blockSignature.signerAddress);
-        if (signerSet.size >= requiredCount) {
-          break;
-        }
-      }
-      let timeDiff = Date.now() - startTime;
-      timeout -= timeDiff;
-      if (timeout < 0) {
-        timeout = 0;
-      }
-    }
-    return lastBlock.signatures;
   }
 
   getCurrentBlockTimeSlot(forgingInterval) {
@@ -2501,7 +2461,7 @@ module.exports = class LDPoSChainModule {
                     );
                   }
                   this.lastReceivedSignerAddressSet.add(selfSignature.signerAddress);
-                  this.verifiedBlockSignatureStream.write(selfSignature);
+                  block.signatures.push(selfSignature);
                   await this.broadcastBlockSignature(selfSignature);
                 } catch (error) {
                   this.logger.error(
@@ -2518,9 +2478,19 @@ module.exports = class LDPoSChainModule {
                 }
               }
             }),
-            // Will throw if the required number of valid signatures cannot be gathered in time.
-            this.receiveLastBlockSignatures(block, blockSignerMajorityCount, forgingSignatureBroadcastDelay + propagationTimeout)
+            this.wait(forgingSignatureBroadcastDelay + propagationTimeout)
           ]);
+
+          // Throw if the required number of valid signatures could not be gathered in time.
+          if (block.signatures.length < blockSignerMajorityCount) {
+            throw new Error(
+              `Failed to receive enough block signatures before timeout - Received ${
+                block.signatures.length
+              } out of ${
+                blockSignerMajorityCount
+              } required signatures`
+            );
+          }
 
           this.logger.info(`Received a sufficient number of valid delegate signatures for block ${block.id}`);
 
@@ -3224,7 +3194,7 @@ module.exports = class LDPoSChainModule {
         }
 
         this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress);
-        this.verifiedBlockSignatureStream.write(blockSignature);
+        lastReceivedBlock.signatures.push(blockSignature);
 
         // This is a performance optimization to ensure that peers
         // will not receive multiple instances of the same signature at the same time.
