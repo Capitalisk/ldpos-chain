@@ -3062,9 +3062,9 @@ module.exports = class LDPoSChainModule {
         let forgingAccountList;
         try {
           forgingAccountList = await Promise.all(
-            block.forgingKeyChanges.map(async (keyChange) => {
-              let account = await this.getSanitizedAccount(keyChange.forgerAddress);
-            })
+            block.forgingKeyChanges.map(
+              async (keyChange) => this.getSanitizedAccount(keyChange.forgerAddress)
+            )
           );
         } catch (error) {
           if (error.name === 'AccountDidNotExistError') {
