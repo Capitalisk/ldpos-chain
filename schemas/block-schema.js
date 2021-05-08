@@ -25,6 +25,7 @@ const validPropertyList = [
   'nextForgingPublicKey',
   'nextForgingKeyIndex',
   'forgerSignature',
+  'forgingKeyChanges',
   'signatures'
 ];
 

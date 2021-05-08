@@ -264,6 +264,7 @@ describe('DEX API tests', async () => {
           height: 1,
           timestamp: 30000,
           previousBlockId: null,
+          forgingKeyChanges: [],
           transactions: [
             {
               type: 'transfer',
@@ -287,6 +288,7 @@ describe('DEX API tests', async () => {
           height: 2,
           timestamp: 60000,
           previousBlockId: null,
+          forgingKeyChanges: [],
           transactions: [
             {
               type: 'transfer',
@@ -302,6 +304,7 @@ describe('DEX API tests', async () => {
           height: 3,
           timestamp: 90000,
           previousBlockId: null,
+          forgingKeyChanges: [],
           transactions: [
             {
               type: 'transfer',
