@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const shuffle = require('lodash.shuffle');
 const WritableConsumableStream = require('writable-consumable-stream');
 
 const genesisBlock = require('./genesis/testnet/genesis.json');
@@ -1252,11 +1251,9 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    let blockSignaturesToStore = shuffle(blockSignatureList).slice(0, requiredBlockSignatureCount);
-
     await this.dal.upsertBlock({
       ...block,
-      signatures: blockSignaturesToStore
+      signatures: blockSignatureList
     }, synched);
 
     this.logger.info(`Upserted block ${block.id} into data store`);
@@ -2398,8 +2395,24 @@ module.exports = class LDPoSChainModule {
             }
           }
 
-          let cachedBlocks = {};
+          let cachedPastBlocks = {};
           let forgingAddressList = Object.keys(this.ldposForgingClients);
+          let hasSigningForgers = forgingAddressList.some((clientForgerAddress) => {
+            return (
+              this.topActiveDelegateAddressSet.has(clientForgerAddress) &&
+              clientForgerAddress !== currentForgingDelegateAddress
+            );
+          });
+
+          if (hasSigningForgers) {
+            let pastBlockIdSet = new Set(block.forgingKeyChanges.map((keyChange) => keyChange.blockId));
+            let pastBlockList = await Promise.all(
+              [...pastBlockIdSet].map(async (blockId) => this.dal.getSignedBlock(blockId))
+            );
+            for (let pastBlock of pastBlockList) {
+              cachedPastBlocks[pastBlock.id] = pastBlock;
+            }
+          }
 
           await Promise.all([
             ...forgingAddressList.map(async (clientForgerAddress) => {
@@ -2408,24 +2421,35 @@ module.exports = class LDPoSChainModule {
                 clientForgerAddress !== currentForgingDelegateAddress
               ) {
                 try {
-                  let { forgingKeyChanges } = block;// TODO 222 do schema validation
+                  // Check that the forgingKeyChanges list (which allows delegates to
+                  // change/shift forward their forging keys) is valid based on the data held by our node.
+                  // At this point, we have already verified (as part of the block verification step) that all the
+                  // candidate public keys which are included in the block's forgingKeyChanges list are already registered
+                  // with their specified delegates as secondary keys (nextForgingPublicKey).
+                  // We know that the specified public keys were registered by corresponding delegates as secondary
+                  // keys, but we don't yet know if those delegates actually triggered the key shifts (as part of
+                  // an earlier block signature).
+                  // Our delegate node will only sign the block if it has proof that
+                  // all the public keys in the block's forgingKeyChanges list correspond to signatures which were attached
+                  // to earlier blocks.
+                  // Note that the absense of a specific signature from a past block does not necessarily
+                  // mean that the delegate did not sign that block; it may simply have failed to propagate
+                  // to our node in time. It's possible that other nodes have it; but in that case, our
+                  // node cannot attest that the forgingKeyChanges list is valid; so it will not
+                  // sign the block. The block is only valid if the majority of delegates sign it.
                   await Promise.all(
-                    forgingKeyChanges.map(async (keyChange) => {
-                      let signedBlock = cachedBlocks[keyChange.blockId];
-                      if (!signedBlock) {
-                        signedBlock = await this.dal.getSignedBlock(keyChange.blockId);
-                        cachedBlocks[keyChange.blockId] = signedBlock;
-                      }
+                    block.forgingKeyChanges.map(async (keyChange) => {
+                      let signedBlock = cachedPastBlocks[keyChange.blockId];
                       let blockSignatures = {};
                       for (let signaturePacket of signedBlock.signatures) {
                         blockSignatures[signaturePacket.signerAddress] = signaturePacket;
                       }
                       let matchingSignature = blockSignatures[keyChange.forgerAddress];
-                      if (!matchingSignature) {// TODO 222 rename forgerAddress to signerAddress or delegateAddress 7777
+                      if (!matchingSignature) {
                         throw new Error(
                           `The signature of delegate ${
                             keyChange.forgerAddress
-                          } referenced in the forgingKeyChanges list could not be found on the previous block ${
+                          } from the forgingKeyChanges list could not be found on the past block ${
                             keyChange.blockId
                           }`
                         );
@@ -2438,7 +2462,7 @@ module.exports = class LDPoSChainModule {
                         throw new Error(
                           `The forgingPublicKey, nextForgingPublicKey and nextForgingKeyIndex of delegate ${
                             keyChange.forgerAddress
-                          } referenced in the forgingKeyChanges list did not match those on the previous block ${
+                          } from the forgingKeyChanges list did not match those on the past block ${
                             keyChange.blockId
                           }`
                         );
@@ -3025,44 +3049,43 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        if (block.forgingKeyChanges) {// TODO 222
-          let forgingAccounts;
-          try {
-            forgingAccounts = await Promise.all(
-              block.forgingKeyChanges.map(async (keyChange) => {
-                let account = await this.getSanitizedAccount(keyChange.forgerAddress);
-              })
-            );
-          } catch (error) {
-            if (error.name === 'AccountDidNotExistError') {
-              this.logger.debug(
-                `Block ${block.id} forgingKeyChanges list contained references to forgers which did not exist`
-              );
-            } else {
-              this.logger.debug(
-                `Failed to fetch accounts while verifying the forgingKeyChanges list of the block ${
-                  block.id
-                } because of error: ${
-                  error.message
-                }`
-              );
-            }
-            return;
-          }
-          let forgingAccounts = {};
-          for (let account of forgingAccounts) {
-            forgingAccounts[account.address] = account;// TODO 222
-          }
-          let areAllKeyChangesValid = block.forgingKeyChanges.every((keyChange) => {
-            let account = forgingAccounts[keyChange.forgerAddress];
-            return keyChange.forgingPublicKey === account.nextForgingPublicKey;
-          });
-          if (!areAllKeyChangesValid) {
+        // If forging key changes are invalid, do not propagate the block.
+        let forgingAccountList;
+        try {
+          forgingAccountList = await Promise.all(
+            block.forgingKeyChanges.map(async (keyChange) => {
+              let account = await this.getSanitizedAccount(keyChange.forgerAddress);
+            })
+          );
+        } catch (error) {
+          if (error.name === 'AccountDidNotExistError') {
             this.logger.debug(
-              `Block ${block.id} forgingKeyChanges list contained invalid key changes`
+              `Block ${block.id} forgingKeyChanges list contained references to forgers which did not exist`
             );
-            return;
+          } else {
+            this.logger.debug(
+              `Failed to fetch accounts while verifying the forgingKeyChanges list of the block ${
+                block.id
+              } because of error: ${
+                error.message
+              }`
+            );
           }
+          return;
+        }
+        let forgingAccounts = {};
+        for (let account of forgingAccountList) {
+          forgingAccounts[account.address] = account;
+        }
+        let areAllKeyChangesValid = block.forgingKeyChanges.every((keyChange) => {
+          let account = forgingAccounts[keyChange.forgerAddress];
+          return keyChange.forgingPublicKey === account.nextForgingPublicKey;
+        });
+        if (!areAllKeyChangesValid) {
+          this.logger.debug(
+            `Block ${block.id} forgingKeyChanges list contained invalid key changes`
+          );
+          return;
         }
 
         let { transactions } = block;
