@@ -42,11 +42,11 @@ const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
-const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 3000;
-const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 9000;
+const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
+const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 7000;
-const DEFAULT_PROPAGATION_RANDOMNESS = 3000;
+const DEFAULT_PROPAGATION_TIMEOUT = 6000;
+const DEFAULT_PROPAGATION_RANDOMNESS = 2000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
@@ -1913,28 +1913,42 @@ module.exports = class LDPoSChainModule {
     return senderAccountDetails;
   }
 
-  async verifyBlockSignature(block, blockSignature) {
+  validateBlockExists(block) {
     if (!block) {
-      throw new Error('Cannot verify block signature because there is no block pending');
+      throw new Error('Block was not specified');
     }
+  }
 
-    let { signerAddress } = blockSignature;
-
+  validateSignatureCorrespondsToBlock(block, blockSignature) {
     if (blockSignature.blockId !== block.id) {
       throw new Error(
         `Block signature from signer ${
-          signerAddress
+          blockSignature.signerAddress
         } was for a different block - Expected signature for block with ID ${
           block.id
         }`
       );
     }
+  }
 
-    if (!this.topActiveDelegateAddressSet.has(signerAddress)) {
+  validateSignatureBelongsToTopForger(blockSignature) {
+    if (!this.topActiveDelegateAddressSet.has(blockSignature.signerAddress)) {
       throw new Error(
-        `Account ${signerAddress} is not a top active delegate and therefore cannot be a block signer`
+        `Account ${blockSignature.signerAddress} is not a top active delegate and therefore cannot be a block signer`
       );
     }
+  }
+
+  validateBlockSignerIsNotForger(block, blockSignature) {
+    if (blockSignature.signerAddress === block.forgerAddress) {
+      throw new Error(
+        `Block forger ${block.forgerAddress} cannot re-sign their own block`
+      );
+    }
+  }
+
+  async verifyBlockSignaturePublicKeyBelongsToAccount(blockSignature) {
+    let { signerAddress } = blockSignature;
 
     let signerAccount;
     try {
@@ -1955,8 +1969,28 @@ module.exports = class LDPoSChainModule {
         }`
       );
     }
+  }
 
-    return this.ldposClient.verifyBlockSignature(block, blockSignature);
+  verifyBlockSignatureIsAuthentic(block, blockSignature) {
+    if (!this.ldposClient.verifyBlockSignature(block, blockSignature)) {
+      throw new Error(
+        `Signature of block signer ${
+          blockSignature.signerAddress
+        } for block ${
+          block.id
+        } was not authentic`
+      );
+    }
+  }
+
+  async verifyBlockSignature(block, blockSignature) {
+    this.validateBlockExists(block);
+    this.validateSignatureCorrespondsToBlock(block, blockSignature);
+    this.validateSignatureBelongsToTopForger(blockSignature);
+    this.validateBlockSignerIsNotForger(block, blockSignature);
+
+    await this.verifyBlockSignaturePublicKeyBelongsToAccount(blockSignature);
+    this.verifyBlockSignatureIsAuthentic(block, blockSignature);
   }
 
   async broadcastBlock(block) {
@@ -3168,17 +3202,24 @@ module.exports = class LDPoSChainModule {
         this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
 
         let lastReceivedBlock = this.lastReceivedBlock;
-        let { forgerAddress } = lastReceivedBlock;
-
-        if (blockSignature.signerAddress === forgerAddress) {
-          this.logger.debug(
-            `Block forger ${forgerAddress} cannot re-sign their own block`
-          );
-          return;
-        }
 
         try {
-          await this.verifyBlockSignature(lastReceivedBlock, blockSignature);
+          this.validateBlockExists(lastReceivedBlock);
+          this.validateSignatureCorrespondsToBlock(lastReceivedBlock, blockSignature);
+          this.validateSignatureBelongsToTopForger(blockSignature);
+          this.validateBlockSignerIsNotForger(lastReceivedBlock, blockSignature);
+
+          if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
+            this.logger.debug(
+              `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
+            );
+            return;
+          }
+
+          this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress);
+
+          await this.verifyBlockSignaturePublicKeyBelongsToAccount(blockSignature);
+          this.verifyBlockSignatureIsAuthentic(lastReceivedBlock, blockSignature);
         } catch (error) {
           this.logger.debug(
             `Received invalid delegate block signature - ${error.message}`
@@ -3186,14 +3227,6 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
-          this.logger.debug(
-            `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
-          );
-          return;
-        }
-
-        this.lastReceivedSignerAddressSet.add(blockSignature.signerAddress);
         lastReceivedBlock.signatures.push(blockSignature);
 
         // This is a performance optimization to ensure that peers
