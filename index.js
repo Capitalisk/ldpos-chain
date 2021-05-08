@@ -586,7 +586,7 @@ module.exports = class LDPoSChainModule {
       let newBlocks;
       let response;
 
-      let actionRouteString = `${this.alias}?genesis${this.minGenesisIndex}=true`;
+      let actionRouteString = `${this.alias}?genesis${this.minGenesisIndex}=1`;
 
       try {
         response = await this.channel.invoke('network:request', {
@@ -3344,7 +3344,7 @@ module.exports = class LDPoSChainModule {
     // Create an entry for each genesis index so that other peers can route requests to us based
     // on which genesis starting points we support.
     for (let i of this.genesisIndexes) {
-      moduleState[`genesis${i}`] = true;
+      moduleState[`genesis${i}`] = 1;
     }
 
     await this.channel.invoke('app:updateModuleState', {
