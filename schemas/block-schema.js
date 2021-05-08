@@ -10,7 +10,6 @@ const {
 } = require('./primitives');
 
 const { validateBlockSignatureSchema } = require('./block-signature-schema');
-const { validateForgingKeyChangeSchema } = require('./forging-key-change-schema');
 const { findInvalidProperty } = require('./find-invalid-property');
 
 const validPropertyList = [
@@ -25,11 +24,10 @@ const validPropertyList = [
   'nextForgingPublicKey',
   'nextForgingKeyIndex',
   'forgerSignature',
-  'forgingKeyChanges',
   'signatures'
 ];
 
-function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerBlock, minSignatures, maxSignatures, maxForgingKeyChanges, networkSymbol) {
+function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerBlock, minSignatures, maxSignatures, networkSymbol) {
   if (!block) {
     throw new Error('Block was not specified');
   }
@@ -75,15 +73,6 @@ function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerB
     );
   }
 
-  if (!Array.isArray(block.forgingKeyChanges)) {
-    throw new Error('Block forgingKeyChanges must be an array');
-  }
-  if (block.forgingKeyChanges.length > maxForgingKeyChanges) {
-    throw new Error(
-      `Block contained more than the maximum number of ${maxForgingKeyChanges} forgingKeyChanges`
-    );
-  }
-
   let invalidProperty = findInvalidProperty(block, validPropertyList);
 
   if (invalidProperty) {
@@ -113,17 +102,6 @@ function validateBlockSchema(block, minTransactionsPerBlock, maxTransactionsPerB
         signerSet.size
       } signatures but ${minSignatures} were required`
     );
-  }
-
-  let forgerAddressSet = new Set();
-  for (let keyChange of block.forgingKeyChanges) {
-    validateForgingKeyChangeSchema(keyChange, networkSymbol);
-    if (forgerAddressSet.has(keyChange.forgerAddress)) {
-      throw new Error(
-        `Block contained duplicate forgingKeyChanges`
-      );
-    }
-    forgerAddressSet.add(keyChange.forgerAddress);
   }
 }
 

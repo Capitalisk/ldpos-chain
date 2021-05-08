@@ -14,7 +14,7 @@ const NETWORK_SYMBOL = 'ldpos';
 const useKnexDal = process.env.USE_KNEX_DAL;
 const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
 
-describe('Functional tests', async () => {
+describe.only('Functional tests', async () => {
   let chainModule;
   let dal;
   let adapter;
@@ -111,11 +111,11 @@ describe('Functional tests', async () => {
             }
           ],
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
-          forgingInterval: 5000,
+          forgingInterval: 8000,
           forgingBlockBroadcastDelay: 200,
-          forgingSignatureBroadcastDelay: 200,
+          forgingSignatureBroadcastDelay: 400,
           propagationRandomness: 100,
-          propagationTimeout: 3000
+          propagationTimeout: 6000
         };
 
         await chainModule.load(channel, options);
@@ -144,7 +144,7 @@ describe('Functional tests', async () => {
       describe('without any transactions', async () => {
 
         it('should forge correct number of valid blocks based on forging interval', async () => {
-          await wait(12000);
+          await wait(23000);
           let newBlocks = chainChangeEvents.map(event => event.data.block);
           let blockList = await chainModule.actions.getBlocksFromHeight.handler({
             params: {
@@ -165,7 +165,7 @@ describe('Functional tests', async () => {
           for (let i = 0; i < blockCount; i++) {
             let block = newBlocks[i];
             assert.equal(block.height, i + 1);
-            assert.equal(block.timestamp % 5000, 0);
+            assert.equal(block.timestamp % 8000, 0);
             assert.equal(block.forgerAddress, 'ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f');
             assert.equal(typeof block.forgingPublicKey, 'string');
             assert.equal(typeof block.id, 'string');
@@ -197,7 +197,7 @@ describe('Functional tests', async () => {
             });
           }
 
-          await wait(8000);
+          await wait(20000);
         });
 
         it('should forge valid blocks which contain the correct number of transactions', async () => {
@@ -236,7 +236,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -289,7 +289,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -375,7 +375,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       afterEach(async () => {
@@ -485,7 +485,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -597,7 +597,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       afterEach(async () => {
@@ -673,7 +673,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -721,7 +721,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
 
         firstRecipientClient = createClient({
           adapter,
@@ -748,7 +748,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should update account balances', async () => {
@@ -828,7 +828,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -875,7 +875,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should update the top delegate list', async () => {
@@ -910,7 +910,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -956,7 +956,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should send back an error', async () => {
@@ -984,7 +984,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -1034,7 +1034,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should update the top delegate list', async () => {
@@ -1077,7 +1077,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -1103,7 +1103,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -1164,7 +1164,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
 
         // Recipient passphrase: genius shoulder into daring armor proof cycle bench patrol paper grant picture
         let preparedTransferTxn = await clientA.prepareTransaction({
@@ -1185,7 +1185,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should convert sig account into multisig wallet', async () => {
@@ -1225,7 +1225,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
 
         accountBefore = await chainModule.actions.getAccount.handler({
           params: {
@@ -1256,7 +1256,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
 
         accountAfter = await chainModule.actions.getAccount.handler({
           params: {
@@ -1300,7 +1300,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should send back an error', async () => {
@@ -1328,7 +1328,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -1375,7 +1375,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
 
         // Should allow control of an account to be transferred to a different user.
         clientForger.walletAddress = 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199';
@@ -1400,7 +1400,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1438,7 +1438,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should send back an error', async () => {
@@ -1466,7 +1466,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -1513,7 +1513,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1553,7 +1553,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should send back an error', async () => {
@@ -1581,7 +1581,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 5000,
+        forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -1628,7 +1628,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1668,7 +1668,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(8000);
+        await wait(10000);
       });
 
       it('should send back an error', async () => {
