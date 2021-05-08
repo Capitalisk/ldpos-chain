@@ -1327,10 +1327,12 @@ module.exports = class LDPoSChainModule {
       })
     );
 
-    // Remove forgers whose keys have been updated as part of this block from the pendingForgingKeyChangeMap.
+    // Remove forgers whose keys have been updated as part of this block.
     for (let keyChange of forgingKeyChanges) {
       this.pendingForgingKeyChangeMap.delete(keyChange.forgerAddress);
     }
+
+    this.pendingForgingKeyChangeMap.delete(block.forgerAddress);
 
     // Remove delegates who are no longer active forgers from the pendingForgingKeyChangeMap.
     for (let keyChangerAddress of this.pendingForgingKeyChangeMap.keys()) {
