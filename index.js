@@ -896,6 +896,37 @@ module.exports = class LDPoSChainModule {
       };
     }
 
+    // Update keys of previous block forgers.
+    let blockSignerAddressSet = new Set(blockSignatureList.map(blockSignature => blockSignature.signerAddress));
+    let blockSignerAddressList = [...blockSignerAddressSet];
+
+    let blockSignerAccountList = await Promise.all(
+      blockSignerAddressList.map(async (address) => {
+        if (affectedAccountDetails[address]) {
+          return affectedAccountDetails[address].account;
+        }
+        let account;
+        try {
+          account = await this.getSanitizedAccount(address);
+        } catch (error) {
+          if (error.name === 'AccountDidNotExistError') {
+            return {
+              address,
+              type: ACCOUNT_TYPE_SIG,
+              balance: 0n
+            };
+          } else {
+            throw new Error(
+              `Failed to fetch block signer account during block processing because of error: ${
+                error.message
+              }`
+            );
+          }
+        }
+        return account;
+      })
+    );
+
     for (let keyChange of forgingKeyChanges) {
       let keyChangerAccountChanges = affectedAccountDetails[keyChange.forgerAddress].changes;
       keyChangerAccountChanges.forgingPublicKey = keyChange.forgingPublicKey;
@@ -1296,36 +1327,24 @@ module.exports = class LDPoSChainModule {
 
     await this.fetchTopActiveDelegates();
 
-    // Update keys of previous block forgers.
-    let blockSignerAddressSet = new Set(blockSignatureList.map(blockSignature => blockSignature.signerAddress));
-    let blockSignerAddressList = [...blockSignerAddressSet];
+    let blockSignerAccounts = {};
+    for (let account of blockSignerAccountList) {
+      blockSignerAccounts[account.address] = account;
+    }
 
-    let blockSignerAccountList = await Promise.all(
-      blockSignerAddressList.map(async (address) => {
-        if (affectedAccountDetails[address]) {
-          return affectedAccountDetails[address].account;
-        }
-        let account;
-        try {
-          account = await this.getSanitizedAccount(address);
-        } catch (error) {
-          if (error.name === 'AccountDidNotExistError') {
-            return {
-              address,
-              type: ACCOUNT_TYPE_SIG,
-              balance: 0n
-            };
-          } else {
-            throw new Error(
-              `Failed to fetch block signer account during block processing because of error: ${
-                error.message
-              }`
-            );
-          }
-        }
-        return account;
-      })
-    );
+    // Delegates who signed this block and who want to change their keys are added to the pendingForgingKeyChangeMap.
+    for (let blockSignature of blockSignatureList) {
+      let signerAccount = blockSignerAccounts[blockSignature.signerAddress];
+      if (blockSignature.forgingPublicKey === signerAccount.nextForgingPublicKey) {
+        this.pendingForgingKeyChangeMap.set(signerAccount.address, {
+          blockId: block.id,
+          forgerAddress: signerAccount.address,
+          forgingPublicKey: blockSignature.forgingPublicKey,
+          nextForgingPublicKey: blockSignature.nextForgingPublicKey,
+          nextForgingKeyIndex: blockSignature.nextForgingKeyIndex
+        });
+      }
+    }
 
     // Remove forgers whose keys have been updated as part of this block.
     for (let keyChange of forgingKeyChanges) {
@@ -1338,25 +1357,6 @@ module.exports = class LDPoSChainModule {
     for (let keyChangerAddress of this.pendingForgingKeyChangeMap.keys()) {
       if (!this.topActiveDelegateAddressSet.has(keyChangerAddress)) {
         this.pendingForgingKeyChangeMap.delete(keyChangerAddress);
-      }
-    }
-
-    let blockSignerAccounts = {};
-    for (let account of blockSignerAccountList) {
-      blockSignerAccounts[account.address] = account;
-    }
-
-    // Delegates who signed this block and who want to change their keys are added to the pendingForgingKeyChangeMap.
-    for (let blockSignature of blockSignatureList) {
-      let signerAccount = blockSignerAccounts[blockSignature.signerAddress];
-      if (blockSignature.forgingPublicKey !== signerAccount.forgingPublicKey) {
-        this.pendingForgingKeyChangeMap.set(signerAccount.address, {
-          blockId: block.id,
-          forgerAddress: signerAccount.address,
-          forgingPublicKey: blockSignature.forgingPublicKey,
-          nextForgingPublicKey: blockSignature.nextForgingPublicKey,
-          nextForgingKeyIndex: blockSignature.nextForgingKeyIndex
-        });
       }
     }
 
