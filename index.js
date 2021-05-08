@@ -896,37 +896,6 @@ module.exports = class LDPoSChainModule {
       };
     }
 
-    // Update keys of previous block forgers.
-    let blockSignerAddressSet = new Set(blockSignatureList.map(blockSignature => blockSignature.signerAddress));
-    let blockSignerAddressList = [...blockSignerAddressSet];
-
-    let blockSignerAccountList = await Promise.all(
-      blockSignerAddressList.map(async (address) => {
-        if (affectedAccountDetails[address]) {
-          return affectedAccountDetails[address].account;
-        }
-        let account;
-        try {
-          account = await this.getSanitizedAccount(address);
-        } catch (error) {
-          if (error.name === 'AccountDidNotExistError') {
-            return {
-              address,
-              type: ACCOUNT_TYPE_SIG,
-              balance: 0n
-            };
-          } else {
-            throw new Error(
-              `Failed to fetch block signer account during block processing because of error: ${
-                error.message
-              }`
-            );
-          }
-        }
-        return account;
-      })
-    );
-
     for (let keyChange of forgingKeyChanges) {
       let keyChangerAccountChanges = affectedAccountDetails[keyChange.forgerAddress].changes;
       keyChangerAccountChanges.forgingPublicKey = keyChange.forgingPublicKey;
@@ -1327,6 +1296,34 @@ module.exports = class LDPoSChainModule {
 
     await this.fetchTopActiveDelegates();
 
+    // Update keys of previous block forgers.
+    let blockSignerAddressSet = new Set(blockSignatureList.map(blockSignature => blockSignature.signerAddress));
+    let blockSignerAddressList = [...blockSignerAddressSet];
+
+    let blockSignerAccountList = await Promise.all(
+      blockSignerAddressList.map(async (address) => {
+        let account;
+        try {
+          account = await this.getSanitizedAccount(address);
+        } catch (error) {
+          if (error.name === 'AccountDidNotExistError') {
+            return {
+              address,
+              type: ACCOUNT_TYPE_SIG,
+              balance: 0n
+            };
+          } else {
+            throw new Error(
+              `Failed to fetch block signer account during block processing because of error: ${
+                error.message
+              }`
+            );
+          }
+        }
+        return account;
+      })
+    );
+
     let blockSignerAccounts = {};
     for (let account of blockSignerAccountList) {
       blockSignerAccounts[account.address] = account;
@@ -1343,6 +1340,11 @@ module.exports = class LDPoSChainModule {
           nextForgingPublicKey: blockSignature.nextForgingPublicKey,
           nextForgingKeyIndex: blockSignature.nextForgingKeyIndex
         });
+        this.logger.info(
+          `Added pending forging key change for forger ${
+            signerAccount.address
+          } during block processing`
+        );
       }
     }
 
@@ -3101,6 +3103,14 @@ module.exports = class LDPoSChainModule {
             `Block ${block.id} forgingKeyChanges list contained invalid key changes`
           );
           return;
+        }
+
+        if (block.forgingKeyChanges.length) {
+          this.logger.info(
+            `Block ${block.id} forgingKeyChanges list contained valid key changes for ${
+              block.forgingKeyChanges.length
+            } forgers`
+          );
         }
 
         let { transactions } = block;
