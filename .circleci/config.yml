@@ -19,7 +19,20 @@ jobs:
             yarn install
             yarn test
 
-  integration-test:
+  integration-test-sqlite:
+    executor: node-executor
+    working_directory: ~/repo
+    steps:
+      - checkout:
+          path: ~/repo
+      - run:
+          name: Test
+          command: |
+            set +e
+            yarn install
+            yarn test:using-dal-knex-sqlite
+
+  integration-test-postgres:
     working_directory: ~/repo
     machine: true
     steps:
@@ -66,7 +79,7 @@ jobs:
             export PATH="$HOME/.yarn/bin:$HOME/.config/yarn/global/node_modules/.bin:$PATH"
             nvm use 12.18.2
             yarn install
-            yarn test:using-dal-knex
+            yarn test:using-dal-knex-postgres
       - run:
           name: Cleanup
           command: |
@@ -82,4 +95,5 @@ workflows:
   test:
     jobs:
       - unit-test
-      - integration-test
+      - integration-test-sqlite
+      - integration-test-postgres
