@@ -1164,7 +1164,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(18000);
 
         // Recipient passphrase: genius shoulder into daring armor proof cycle bench patrol paper grant picture
         let preparedTransferTxn = await clientA.prepareTransaction({
@@ -1185,7 +1185,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should convert sig account into multisig wallet', async () => {
@@ -1375,7 +1375,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(18000);
 
         // Should allow control of an account to be transferred to a different user.
         clientForger.walletAddress = 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199';
@@ -1400,7 +1400,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1438,7 +1438,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should send back an error', async () => {
@@ -1513,7 +1513,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1553,7 +1553,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should send back an error', async () => {
@@ -1628,7 +1628,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1668,7 +1668,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(15000);
+        await wait(18000);
       });
 
       it('should send back an error', async () => {
