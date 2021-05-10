@@ -111,11 +111,11 @@ describe('Functional tests', async () => {
             }
           ],
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
-          forgingInterval: 8000,
-          forgingBlockBroadcastDelay: 400,
-          forgingSignatureBroadcastDelay: 600,
+          forgingInterval: 10000,
+          forgingBlockBroadcastDelay: 500,
+          forgingSignatureBroadcastDelay: 3000,
           propagationRandomness: 100,
-          propagationTimeout: 7000
+          propagationTimeout: 5000
         };
 
         await chainModule.load(channel, options);
@@ -165,7 +165,7 @@ describe('Functional tests', async () => {
           for (let i = 0; i < blockCount; i++) {
             let block = newBlocks[i];
             assert.equal(block.height, i + 1);
-            assert.equal(block.timestamp % 8000, 0);
+            assert.equal(block.timestamp % 10000, 0);
             assert.equal(block.forgerAddress, 'ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f');
             assert.equal(typeof block.forgingPublicKey, 'string');
             assert.equal(typeof block.id, 'string');
@@ -236,7 +236,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 500,
         propagationRandomness: 100,
@@ -956,7 +956,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(12000);
+        await wait(14000);
       });
 
       it('should send back an error', async () => {

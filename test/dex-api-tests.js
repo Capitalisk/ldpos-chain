@@ -122,10 +122,10 @@ describe('DEX API tests', async () => {
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 30000,
-        forgingBlockBroadcastDelay: 200,
-        forgingSignatureBroadcastDelay: 200,
+        forgingBlockBroadcastDelay: 300,
+        forgingSignatureBroadcastDelay: 400,
         propagationRandomness: 100,
-        propagationTimeout: 5000
+        propagationTimeout: 7000
       };
       await launchChainModule(options);
     });
@@ -828,7 +828,7 @@ describe('DEX API tests', async () => {
     });
 
     it('should expose a chainChanges event', async () => {
-      await wait(13000);
+      await wait(14000);
       assert.equal(chainChangeEvents.length >=1, true);
       let eventData = chainChangeEvents[0].data;
       assert.equal(eventData.type, 'addBlock');
