@@ -14,7 +14,7 @@ const NETWORK_SYMBOL = 'ldpos';
 const useKnexDal = process.env.USE_KNEX_DAL;
 const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
 
-describe.only('Functional tests', async () => {
+describe('Functional tests', async () => {
   let chainModule;
   let dal;
   let adapter;
@@ -112,7 +112,7 @@ describe.only('Functional tests', async () => {
           ],
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
           forgingInterval: 8000,
-          forgingBlockBroadcastDelay: 200,
+          forgingBlockBroadcastDelay: 400,
           forgingSignatureBroadcastDelay: 600,
           propagationRandomness: 100,
           propagationTimeout: 7000
