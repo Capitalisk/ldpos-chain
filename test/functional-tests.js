@@ -14,7 +14,7 @@ const NETWORK_SYMBOL = 'ldpos';
 const useKnexDal = process.env.USE_KNEX_DAL;
 const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
 
-describe.only('Functional tests', async () => {
+describe('Functional tests', async () => {
   let chainModule;
   let dal;
   let adapter;
