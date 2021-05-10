@@ -673,11 +673,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
@@ -984,11 +984,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
@@ -1103,11 +1103,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
@@ -1328,11 +1328,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
@@ -1466,11 +1466,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
@@ -1581,11 +1581,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
+        forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
         forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 2000
+        propagationTimeout: 3000
       };
 
       await chainModule.load(channel, options);
