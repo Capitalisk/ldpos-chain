@@ -289,7 +289,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -375,7 +375,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       afterEach(async () => {
@@ -485,7 +485,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -597,7 +597,7 @@ describe('Functional tests', async () => {
           });
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       afterEach(async () => {
@@ -721,7 +721,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
 
         firstRecipientClient = createClient({
           adapter,
@@ -748,7 +748,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should update account balances', async () => {
@@ -1034,7 +1034,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should update the top delegate list', async () => {
@@ -1077,7 +1077,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -1164,7 +1164,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
 
         // Recipient passphrase: genius shoulder into daring armor proof cycle bench patrol paper grant picture
         let preparedTransferTxn = await clientA.prepareTransaction({
@@ -1185,7 +1185,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should convert sig account into multisig wallet', async () => {
@@ -1225,7 +1225,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
 
         accountBefore = await chainModule.actions.getAccount.handler({
           params: {
@@ -1256,7 +1256,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(15000);
 
         accountAfter = await chainModule.actions.getAccount.handler({
           params: {
@@ -1300,7 +1300,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(12000);
+        await wait(15000);
       });
 
       it('should send back an error', async () => {
