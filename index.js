@@ -3034,9 +3034,18 @@ module.exports = class LDPoSChainModule {
       (async () => {
         let blockSignature = event.data;
 
-        validateBlockSignatureSchema(blockSignature, this.networkSymbol);
+        this.logger.info(
+          `Received block signature from signer ${blockSignature && blockSignature.signerAddress}`
+        );
 
-        this.logger.info(`Received block signature from signer ${blockSignature.signerAddress}`);
+        if (this.isCatchingUp) {
+          this.logger.debug(
+            'Block signature was ignored because the node was catching up with the network'
+          );
+          return;
+        }
+
+        validateBlockSignatureSchema(blockSignature, this.networkSymbol);
 
         let lastReceivedBlock = this.lastReceivedBlock;
 
