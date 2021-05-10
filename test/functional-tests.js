@@ -113,7 +113,7 @@ describe('Functional tests', async () => {
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
           forgingInterval: 10000,
           forgingBlockBroadcastDelay: 500,
-          forgingSignatureBroadcastDelay: 1000,
+          forgingSignatureBroadcastDelay: 2000,
           propagationRandomness: 100,
           propagationTimeout: 3000
         };
@@ -238,7 +238,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -675,7 +675,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -828,7 +828,7 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 20000,
+        forgingInterval: 15000,
         forgingBlockBroadcastDelay: 1000,
         forgingSignatureBroadcastDelay: 3000,
         propagationRandomness: 100,
@@ -959,7 +959,7 @@ describe('Functional tests', async () => {
         await wait(25000);
       });
 
-      it('should send back an error', async () => {
+      it('should not exceed the maximum number of votes', async () => {
         let activeDelegatesAfterList = await chainModule.actions.getForgingDelegates.handler();
         // A vote transaction may be accepted even if it turns out of be a no-op.
         assert.equal(caughtError, null);
@@ -986,7 +986,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1104,8 +1104,8 @@ describe('Functional tests', async () => {
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
-        forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingBlockBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1225,7 +1225,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(22000);
 
         accountBefore = await chainModule.actions.getAccount.handler({
           params: {
@@ -1256,7 +1256,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(15000);
+        await wait(22000);
 
         accountAfter = await chainModule.actions.getAccount.handler({
           params: {
@@ -1330,7 +1330,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1468,7 +1468,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -1583,7 +1583,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };

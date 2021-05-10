@@ -4,15 +4,15 @@
   "description": "LDPoS chain module",
   "main": "index.js",
   "scripts": {
-    "test": "mocha --reporter spec --timeout 40000 --slow 40000",
+    "test": "mocha --reporter spec --timeout 50000 --slow 50000",
     "start:postgres": "cd node_modules/ldpos-knex-dal && yarn start:db",
     "stop:postgres": "cd node_modules/ldpos-knex-dal && yarn stop:db",
     "reset:postgres": "cd node_modules/ldpos-knex-dal && yarn reset:db",
     "start:pgadmin": "cd node_modules/ldpos-knex-dal && yarn start:pgadmin",
     "stop:pgadmin": "cd node_modules/ldpos-knex-dal && yarn stop:pgadmin",
     "reset:pgadmin": "cd node_modules/ldpos-knex-dal && yarn reset:pgadmin",
-    "test:using-dal-knex-postgres": "USE_KNEX_DAL=true mocha --reporter spec --timeout 40000 --slow 40000",
-    "test:using-dal-knex-sqlite": "USE_KNEX_DAL=true USE_SQLITE=true mocha --reporter spec --timeout 40000 --slow 40000"
+    "test:using-dal-knex-postgres": "USE_KNEX_DAL=true mocha --reporter spec --timeout 50000 --slow 50000",
+    "test:using-dal-knex-sqlite": "USE_KNEX_DAL=true USE_SQLITE=true mocha --reporter spec --timeout 50000 --slow 50000"
   },
   "keywords": [
     "blockchain",
