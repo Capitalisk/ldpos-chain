@@ -144,7 +144,7 @@ describe.only('Functional tests', async () => {
       describe('without any transactions', async () => {
 
         it('should forge correct number of valid blocks based on forging interval', async () => {
-          await wait(23000);
+          await wait(25000);
           let newBlocks = chainChangeEvents.map(event => event.data.block);
           let blockList = await chainModule.actions.getBlocksFromHeight.handler({
             params: {
@@ -197,7 +197,7 @@ describe.only('Functional tests', async () => {
             });
           }
 
-          await wait(20000);
+          await wait(25000);
         });
 
         it('should forge valid blocks which contain the correct number of transactions', async () => {
