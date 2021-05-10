@@ -14,7 +14,7 @@ const NETWORK_SYMBOL = 'ldpos';
 const useKnexDal = process.env.USE_KNEX_DAL;
 const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
 
-describe('Functional tests', async () => {
+describe.only('Functional tests', async () => {
   let chainModule;
   let dal;
   let adapter;
@@ -113,9 +113,9 @@ describe('Functional tests', async () => {
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
           forgingInterval: 10000,
           forgingBlockBroadcastDelay: 500,
-          forgingSignatureBroadcastDelay: 3000,
+          forgingSignatureBroadcastDelay: 1000,
           propagationRandomness: 100,
-          propagationTimeout: 5000
+          propagationTimeout: 3000
         };
 
         await chainModule.load(channel, options);
@@ -238,7 +238,7 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 10000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
         propagationTimeout: 3000
       };
@@ -675,9 +675,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);
@@ -828,11 +828,11 @@ describe('Functional tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 6000,
-        forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingInterval: 20000,
+        forgingBlockBroadcastDelay: 1000,
+        forgingSignatureBroadcastDelay: 3000,
         propagationRandomness: 100,
-        propagationTimeout: 3000,
+        propagationTimeout: 5000,
         maxVotesPerAccount: 2
       };
 
@@ -875,7 +875,7 @@ describe('Functional tests', async () => {
           }
         });
 
-        await wait(12000);
+        await wait(25000);
       });
 
       it('should update the top delegate list', async () => {
@@ -910,7 +910,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(12000);
+        await wait(25000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -956,7 +956,7 @@ describe('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(14000);
+        await wait(25000);
       });
 
       it('should send back an error', async () => {
@@ -986,9 +986,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);
@@ -1105,9 +1105,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);
@@ -1330,9 +1330,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);
@@ -1468,9 +1468,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);
@@ -1583,9 +1583,9 @@ describe('Functional tests', async () => {
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 6000,
         forgingBlockBroadcastDelay: 500,
-        forgingSignatureBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 3000
+        propagationTimeout: 2000
       };
 
       await chainModule.load(channel, options);

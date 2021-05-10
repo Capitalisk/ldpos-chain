@@ -122,10 +122,10 @@ describe('DEX API tests', async () => {
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 30000,
-        forgingBlockBroadcastDelay: 300,
-        forgingSignatureBroadcastDelay: 400,
+        forgingBlockBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 7000
+        propagationTimeout: 8000
       };
       await launchChainModule(options);
     });
@@ -171,10 +171,10 @@ describe('DEX API tests', async () => {
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
         forgingInterval: 30000,
-        forgingBlockBroadcastDelay: 200,
-        forgingSignatureBroadcastDelay: 200,
+        forgingBlockBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 1000,
         propagationRandomness: 100,
-        propagationTimeout: 5000
+        propagationTimeout: 8000
       };
       await launchChainModule(options);
 
@@ -368,7 +368,7 @@ describe('DEX API tests', async () => {
           }
         });
         // Must be an array of wallet address strings.
-        assert.equal(JSON.stringify(walletMembers), JSON.stringify(memberAddessList));
+        assert.equal(JSON.stringify(walletMembers.sort()), JSON.stringify(memberAddessList.sort()));
       });
 
       it('should throw a MultisigAccountDidNotExistError if the multisig wallet address does not exist', async () => {
@@ -813,11 +813,11 @@ describe('DEX API tests', async () => {
           }
         ],
         minTransactionsPerBlock: 0, // Enable forging empty blocks.
-        forgingInterval: 10000,
-        forgingBlockBroadcastDelay: 200,
-        forgingSignatureBroadcastDelay: 200,
+        forgingInterval: 20000,
+        forgingBlockBroadcastDelay: 500,
+        forgingSignatureBroadcastDelay: 2000,
         propagationRandomness: 100,
-        propagationTimeout: 5000
+        propagationTimeout: 7000
       };
       await launchChainModule(options);
     });
@@ -828,7 +828,7 @@ describe('DEX API tests', async () => {
     });
 
     it('should expose a chainChanges event', async () => {
-      await wait(14000);
+      await wait(30000);
       assert.equal(chainChangeEvents.length >=1, true);
       let eventData = chainChangeEvents[0].data;
       assert.equal(eventData.type, 'addBlock');
