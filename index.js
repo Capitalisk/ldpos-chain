@@ -127,6 +127,7 @@ module.exports = class LDPoSChainModule {
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
 
+    this.isCatchingUp = false;
     this.isActive = false;
   }
 
@@ -569,6 +570,7 @@ module.exports = class LDPoSChainModule {
       };
     }
 
+    this.isCatchingUp = true;
     this.logger.info('Attempting to catch up with the network');
 
     let consecutiveFailureCount = 0;
@@ -717,6 +719,7 @@ module.exports = class LDPoSChainModule {
       await this.wait(fetchBlockPause);
     }
 
+    this.isCatchingUp = false;
     this.logger.info('Stopped catching up with the network');
     return {
       lastHeight: this.lastProcessedBlock.height,
@@ -1032,6 +1035,7 @@ module.exports = class LDPoSChainModule {
         } else if (account.updateHeight < height) {
           await this.dal.upsertAccount({
             address: account.address,
+            type: account.type,
             ...accountUpdatePacket
           });
         }
@@ -2888,6 +2892,13 @@ module.exports = class LDPoSChainModule {
       (async () => {
         let block = event.data;
         this.logger.info(`Received block ${block && block.id}`);
+
+        if (this.isCatchingUp) {
+          this.logger.debug(
+            'Block was ignored because the node was catching up with the network'
+          );
+          return;
+        }
 
         let senderAccountDetails;
         try {

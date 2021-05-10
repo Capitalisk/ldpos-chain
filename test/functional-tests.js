@@ -113,9 +113,9 @@ describe.only('Functional tests', async () => {
           minTransactionsPerBlock: 0, // Enable forging empty blocks.
           forgingInterval: 8000,
           forgingBlockBroadcastDelay: 200,
-          forgingSignatureBroadcastDelay: 400,
+          forgingSignatureBroadcastDelay: 600,
           propagationRandomness: 100,
-          propagationTimeout: 6000
+          propagationTimeout: 7000
         };
 
         await chainModule.load(channel, options);
@@ -289,7 +289,7 @@ describe.only('Functional tests', async () => {
           });
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -375,7 +375,7 @@ describe.only('Functional tests', async () => {
           });
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       afterEach(async () => {
@@ -485,7 +485,7 @@ describe.only('Functional tests', async () => {
           });
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should process all valid transactions within blocks and correctly update account balances', async () => {
@@ -597,7 +597,7 @@ describe.only('Functional tests', async () => {
           });
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       afterEach(async () => {
@@ -721,7 +721,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
 
         firstRecipientClient = createClient({
           adapter,
@@ -748,7 +748,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should update account balances', async () => {
@@ -875,7 +875,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should update the top delegate list', async () => {
@@ -910,7 +910,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -956,7 +956,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should send back an error', async () => {
@@ -1034,7 +1034,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should update the top delegate list', async () => {
@@ -1077,7 +1077,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should not send back an error, it should be a no-op', async () => {
@@ -1164,7 +1164,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
 
         // Recipient passphrase: genius shoulder into daring armor proof cycle bench patrol paper grant picture
         let preparedTransferTxn = await clientA.prepareTransaction({
@@ -1185,7 +1185,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should convert sig account into multisig wallet', async () => {
@@ -1225,7 +1225,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
 
         accountBefore = await chainModule.actions.getAccount.handler({
           params: {
@@ -1256,7 +1256,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(12000);
 
         accountAfter = await chainModule.actions.getAccount.handler({
           params: {
@@ -1300,7 +1300,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(12000);
       });
 
       it('should send back an error', async () => {
@@ -1375,7 +1375,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(15000);
 
         // Should allow control of an account to be transferred to a different user.
         clientForger.walletAddress = 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199';
@@ -1400,7 +1400,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1438,7 +1438,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should send back an error', async () => {
@@ -1513,7 +1513,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1553,7 +1553,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should send back an error', async () => {
@@ -1628,7 +1628,7 @@ describe.only('Functional tests', async () => {
           }
         });
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should add all the necessary keys on the account', async () => {
@@ -1668,7 +1668,7 @@ describe.only('Functional tests', async () => {
           caughtError = error;
         }
 
-        await wait(10000);
+        await wait(15000);
       });
 
       it('should send back an error', async () => {
