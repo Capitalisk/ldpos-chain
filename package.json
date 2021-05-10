@@ -1,6 +1,6 @@
 {
   "name": "ldpos-chain",
-  "version": "5.1.4",
+  "version": "5.1.5",
   "description": "LDPoS chain module",
   "main": "index.js",
   "scripts": {
@@ -28,7 +28,7 @@
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
-    "ldpos-knex-dal": "^4.0.1",
+    "ldpos-knex-dal": "^4.1.1",
     "mocha": "^8.2.1"
   }
 }
