@@ -77,6 +77,11 @@ const PROPAGATION_MODE_NONE = 'none';
 const GENESIS_INDEX_INDICATOR = 'genesis';
 const BLOCK_SIGNATURE_COUNT_INDICATOR = 'bsc';
 
+// Forgers can shift their keys when they forge a block.
+// Because there are 64 OTS keys in each Merkle signature tree, having more than
+// 64 forgers will not guarantee that every forger will have an opportunity
+// to shift their keys when their turn to forge arrives.
+const MAX_FORGER_COUNT = 64;
 
 const DEFAULT_MIN_TRANSACTION_FEES = {
   transfer: '10000000',
@@ -3290,6 +3295,12 @@ module.exports = class LDPoSChainModule {
     if (this.minForgerBlockSignatureRatio < 0.5) {
       throw new Error(
         `The minForgerBlockSignatureRatio option cannot be less than 0.5`
+      );
+    }
+
+    if (this.forgerCount > MAX_FORGER_COUNT) {
+      throw new Error(
+        `The forgerCount option cannot be greater than ${MAX_FORGER_COUNT}`
       );
     }
 
