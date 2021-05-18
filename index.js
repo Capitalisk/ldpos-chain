@@ -130,8 +130,8 @@ module.exports = class LDPoSChainModule {
     this.pendingBlocks = [];
     this.topActiveDelegates = [];
     this.topActiveDelegateAddressSet = new Set();
-    this.lastSignedBlock = null;
     this.lastProcessedBlock = null;
+    this.lastHandledBlock = null;
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
     this.ldposForgingClients = {};
@@ -583,7 +583,7 @@ module.exports = class LDPoSChainModule {
     let addedBlockCount = 0;
     let now = Date.now();
     if (
-      Math.floor(this.lastProcessedBlock.timestamp / forgingInterval) >= Math.floor(now / forgingInterval)
+      Math.floor(this.lastHandledBlock.timestamp / forgingInterval) >= Math.floor(now / forgingInterval)
     ) {
       return {
         lastHeight: this.lastProcessedBlock.height,
@@ -746,6 +746,7 @@ module.exports = class LDPoSChainModule {
             throw new Error(`Block ${block.id} was not significant; it should not be part of the chain`);
           }
           await this.processBlock(block, senderAccountDetails, true);
+          this.lastHandledBlock = this.lastProcessedBlock;
           addedBlockCount++;
         } catch (error) {
           this.logger.warn(
@@ -2446,7 +2447,6 @@ module.exports = class LDPoSChainModule {
           let blockSignificant = await this.isBlockSignificant(block);
           if (blockSignificant) {
             await this.processBlock(block, senderAccountDetails, false);
-            this.lastSignedBlock = block;
 
             this.nodeHeight = nextHeight;
             this.networkHeight = nextHeight;
@@ -2461,6 +2461,7 @@ module.exports = class LDPoSChainModule {
               block: this.simplifyBlock(block)
             });
           }
+          this.lastHandledBlock = block;
         } catch (error) {
           if (this.isActive) {
             this.logger.error(error);
@@ -3443,7 +3444,7 @@ module.exports = class LDPoSChainModule {
       };
     }
     this.lastReceivedBlock = this.lastProcessedBlock;
-    this.lastSignedBlock = this.lastProcessedBlock;
+    this.lastHandledBlock = this.lastProcessedBlock;
 
     let moduleState = {};
 
