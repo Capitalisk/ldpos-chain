@@ -608,18 +608,29 @@ module.exports = class LDPoSChainModule {
 
       let newBlocks;
       let response;
+      let actionRouteString;
 
-      let actionRouteString = `${
-        this.alias
-      }?${
-        GENESIS_INDEX_INDICATOR
-      }${
-        this.minGenesisIndex
-      }=1&${
-        BLOCK_SIGNATURE_COUNT_INDICATOR
-      }${
-        this.blockSignaturesToFetch
-      }=1`;
+      if (this.minGenesisIndex == null) {
+        actionRouteString = `${
+          this.alias
+        }?${
+          BLOCK_SIGNATURE_COUNT_INDICATOR
+        }${
+          this.blockSignaturesToFetch
+        }=1`;
+      } else {
+        actionRouteString = `${
+          this.alias
+        }?${
+          GENESIS_INDEX_INDICATOR
+        }${
+          this.minGenesisIndex
+        }=1&${
+          BLOCK_SIGNATURE_COUNT_INDICATOR
+        }${
+          this.blockSignaturesToFetch
+        }=1`;
+      }
 
       try {
         response = await this.channel.invoke('network:request', {
@@ -3285,7 +3296,7 @@ module.exports = class LDPoSChainModule {
     this.minGenesisIndex = this.genesisIndexes.reduce(
       (min, index) => min == null || index < min ? index : min,
       null
-    ) || 0;
+    );
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
     this.maxPrivateAPILimit = this.options.maxPrivateAPILimit;
