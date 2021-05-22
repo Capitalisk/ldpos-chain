@@ -64,6 +64,7 @@ const DEFAULT_MAX_CONSECUTIVE_TRANSACTION_FETCH_FAILURES = 3;
 const DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT = 6;
 const DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO = .5;
 const DEFAULT_GENESIS_INDEXES = [0];
+const DEFAULT_CATCH_UP_GENESIS_INDEX = null;
 const DEFAULT_API_LIMIT = 100;
 const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
@@ -74,7 +75,7 @@ const PROPAGATION_MODE_DELAYED = 'delayed';
 const PROPAGATION_MODE_IMMEDIATE = 'immediate';
 const PROPAGATION_MODE_NONE = 'none';
 
-const GENESIS_INDEX_INDICATOR = 'genesis';
+const GENESIS_INDEX_INDICATOR = 'gen';
 const BLOCK_SIGNATURE_COUNT_INDICATOR = 'bsc';
 
 // Forgers can shift their keys when they forge a block.
@@ -610,7 +611,7 @@ module.exports = class LDPoSChainModule {
       let response;
       let actionRouteString;
 
-      if (this.minGenesisIndex == null) {
+      if (this.catchUpGenesisIndex == null) {
         actionRouteString = `${
           this.alias
         }?${
@@ -624,7 +625,7 @@ module.exports = class LDPoSChainModule {
         }?${
           GENESIS_INDEX_INDICATOR
         }${
-          this.minGenesisIndex
+          this.catchUpGenesisIndex
         }=1&${
           BLOCK_SIGNATURE_COUNT_INDICATOR
         }${
@@ -3252,6 +3253,7 @@ module.exports = class LDPoSChainModule {
       catchUpConsensusPollCount: DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT,
       catchUpConsensusMinRatio: DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO,
       genesisIndexes: DEFAULT_GENESIS_INDEXES,
+      catchUpGenesisIndex: DEFAULT_CATCH_UP_GENESIS_INDEX,
       apiLimit: DEFAULT_API_LIMIT,
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
@@ -3294,10 +3296,14 @@ module.exports = class LDPoSChainModule {
     this.maxPendingTransactionsPerAccount = this.options.maxPendingTransactionsPerAccount;
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
     this.genesisIndexes = this.options.genesisIndexes;
+    this.catchUpGenesisIndex = this.options.catchUpGenesisIndex;
     this.minGenesisIndex = this.genesisIndexes.reduce(
       (min, index) => min == null || index < min ? index : min,
       null
     );
+    if (this.catchUpGenesisIndex == null) {
+      this.catchUpGenesisIndex = this.minGenesisIndex;
+    }
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
     this.maxPrivateAPILimit = this.options.maxPrivateAPILimit;
