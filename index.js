@@ -1339,6 +1339,10 @@ module.exports = class LDPoSChainModule {
 
   async isBlockSignificant(block) {
     let delegateAccount = await this.getSanitizedAccount(block.forgerAddress);
+    if (delegateAccount.updateHeight === block.height) {
+      // This can occur if a past block processing attempt failed part-way through.
+      return true;
+    }
     return (
       block.transactions.length >= this.minTransactionsPerBlock ||
       delegateAccount.nextForgingPublicKey == null ||
