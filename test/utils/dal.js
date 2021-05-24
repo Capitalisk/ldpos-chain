@@ -545,7 +545,7 @@ class DAL {
 
   async getDelegatesByVoteWeight(offset, limit, order) {
     return this.sortByProperty(
-      Object.values(this.delegates).filter(delegate => delegate.voteWeight !== '0'),
+      Object.values(this.delegates),
       'voteWeight',
       order,
       BigInt,

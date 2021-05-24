@@ -859,7 +859,8 @@ module.exports = class LDPoSChainModule {
   }
 
   async fetchTopActiveDelegates() {
-    this.topActiveDelegates = await this.dal.getDelegatesByVoteWeight(0, this.forgerCount, 'desc');
+    let delegateList = await this.dal.getDelegatesByVoteWeight(0, this.forgerCount, 'desc');
+    this.topActiveDelegates = delegateList.filter(delegate => delegate.voteWeight !== '0');
     this.topActiveDelegateAddressSet = new Set(this.topActiveDelegates.map(delegate => delegate.address));
   }
 
