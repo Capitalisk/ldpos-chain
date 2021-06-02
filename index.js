@@ -1248,8 +1248,8 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    let signaturesToStore = this.getRequiredBlockSignatureCountAtHeight(height);
-    let blockSignaturesToStore = shuffle(blockSignatureList).slice(0, signaturesToStore);
+    let numberOfSignaturesToStore = this.getRequiredBlockSignatureCountAtHeight(height);
+    let blockSignaturesToStore = shuffle(blockSignatureList).slice(0, numberOfSignaturesToStore);
 
     await this.dal.upsertBlock({
       ...block,
