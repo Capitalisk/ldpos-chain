@@ -36,8 +36,6 @@ const DEFAULT_NETWORK_SYMBOL = 'ldpos';
 const DEFAULT_CRYPTO_CLIENT_LIB_PATH = 'ldpos-client';
 const DEFAULT_FORGER_COUNT = 15;
 const DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO = .6;
-const DEFAULT_BLOCK_SIGNATURES_TO_PROVIDE = 9;
-const DEFAULT_BLOCK_SIGNATURES_TO_FETCH = 9;
 const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 100;
@@ -63,8 +61,9 @@ const DEFAULT_MAX_CONSECUTIVE_BLOCK_FETCH_FAILURES = 5;
 const DEFAULT_MAX_CONSECUTIVE_TRANSACTION_FETCH_FAILURES = 3;
 const DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT = 6;
 const DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO = .5;
-const DEFAULT_GENESIS_INDEXES = [0];
-const DEFAULT_CATCH_UP_GENESIS_INDEX = null;
+const DEFAULT_GENESES = {
+  0: 9
+};
 const DEFAULT_API_LIMIT = 100;
 const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
@@ -75,8 +74,7 @@ const PROPAGATION_MODE_DELAYED = 'delayed';
 const PROPAGATION_MODE_IMMEDIATE = 'immediate';
 const PROPAGATION_MODE_NONE = 'none';
 
-const GENESIS_INDEX_INDICATOR = 'gen';
-const BLOCK_SIGNATURE_COUNT_INDICATOR = 'bsc';
+const GENESIS_INDICATOR = 'gen';
 
 // Forgers can shift their keys when they forge a block.
 // Because there are 64 OTS keys in each Merkle signature tree, having more than
@@ -577,7 +575,7 @@ module.exports = class LDPoSChainModule {
       fetchBlockEndConfirmations,
       fetchBlockLimit,
       fetchBlockPause,
-      requiredBlockSignatureCount,
+      blockSignerMajorityCount,
       maxConsecutiveBlockFetchFailures
     } = options;
 
@@ -609,29 +607,23 @@ module.exports = class LDPoSChainModule {
 
       let newBlocks;
       let response;
-      let actionRouteString;
 
-      if (this.catchUpGenesisIndex == null) {
-        actionRouteString = `${
-          this.alias
-        }?${
-          BLOCK_SIGNATURE_COUNT_INDICATOR
-        }${
-          this.blockSignaturesToFetch
-        }=1`;
-      } else {
-        actionRouteString = `${
-          this.alias
-        }?${
-          GENESIS_INDEX_INDICATOR
-        }${
-          this.catchUpGenesisIndex
-        }=1&${
-          BLOCK_SIGNATURE_COUNT_INDICATOR
-        }${
-          this.blockSignaturesToFetch
-        }=1`;
-      }
+      let matchingGenesesHeights = this.genesesHeights.filter(genHeight => genHeight <= nextBlockHeight);
+
+      let genesesQueryParts = matchingGenesesHeights.map((genHeight) => {
+        let genSignatureCount = this.geneses[genHeight];
+        return `${GENESIS_INDICATOR}${genHeight}-${genSignatureCount}=1`;
+      });
+
+      let requiredSignatureCountAtStart = this.getRequiredBlockSignatureCountAtHeight(nextBlockHeight);
+      let requiredSignatureCountAtEnd = this.getRequiredBlockSignatureCountAtHeight(nextBlockHeight + fetchBlockLimit);
+      let signatureLimit = Math.max(requiredSignatureCountAtStart, requiredSignatureCountAtEnd);
+
+      let actionRouteString = `${
+        this.alias
+      }?match=or&${
+        genesesQueryParts.join('&')
+      }`;
 
       try {
         response = await this.channel.invoke('network:request', {
@@ -639,7 +631,7 @@ module.exports = class LDPoSChainModule {
           data: {
             height: nextBlockHeight,
             limit: fetchBlockLimit,
-            signatureLimit: this.blockSignaturesToFetch
+            signatureLimit
           }
         });
         newBlocks = response.data;
@@ -728,6 +720,11 @@ module.exports = class LDPoSChainModule {
       }
 
       for (let block of newBlocks) {
+        let blockHeight = this.lastProcessedBlock.height + 1;
+        let requiredBlockSignatureCount = Math.min(
+          blockSignerMajorityCount,
+          this.getRequiredBlockSignatureCountAtHeight(blockHeight)
+        );
         try {
           validateBlockSchema(
             block,
@@ -1251,7 +1248,8 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    let blockSignaturesToStore = shuffle(blockSignatureList).slice(0, this.blockSignaturesToProvide);
+    let signaturesToStore = this.getRequiredBlockSignatureCountAtHeight(height);
+    let blockSignaturesToStore = shuffle(blockSignatureList).slice(0, signaturesToStore);
 
     await this.dal.upsertBlock({
       ...block,
@@ -1336,6 +1334,20 @@ module.exports = class LDPoSChainModule {
 
     this.lastProcessedBlock = block;
     this.logger.info(`Finished processing block ${block.id} at height ${block.height}`);
+  }
+
+  getRequiredBlockSignatureCountAtHeight(height) {
+    let matchingGenesesHeights = this.genesesHeights.filter(genHeight => genHeight <= height);
+    let maxMatchingGenHeight = matchingGenesesHeights.reduce(
+      (maxHeight, genHeight) => {
+        if (maxHeight == null || genHeight > maxHeight) {
+          return genHeight;
+        }
+        return maxHeight;
+      },
+      null
+    );
+    return this.geneses[maxMatchingGenHeight];
   }
 
   async isBlockSignificant(block) {
@@ -2186,15 +2198,13 @@ module.exports = class LDPoSChainModule {
         let activeDelegateCount = Math.min(this.topActiveDelegates.length, forgerCount);
         let blockSignerMajorityCount = Math.floor(activeDelegateCount * this.minForgerBlockSignatureRatio);
 
-        let requiredBlockSignatureCountDuringCatchUp = Math.min(blockSignerMajorityCount, this.blockSignaturesToFetch);
-
         // If the node is already on the latest network height, it will just return it.
         let { lastHeight, addedBlockCount } = await this.catchUpWithNetwork({
           forgingInterval,
           fetchBlockLimit,
           fetchBlockPause,
           fetchBlockEndConfirmations,
-          requiredBlockSignatureCount: requiredBlockSignatureCountDuringCatchUp,
+          blockSignerMajorityCount,
           maxConsecutiveBlockFetchFailures
         });
         this.networkHeight = lastHeight;
@@ -2610,6 +2620,9 @@ module.exports = class LDPoSChainModule {
       `Received transaction ${transaction.id}`
     );
 
+    let senderAccount;
+    let multisigMemberAccounts;
+
     let { senderAddress } = transaction;
 
     let resolveTransaction;
@@ -2652,8 +2665,12 @@ module.exports = class LDPoSChainModule {
       }
 
       accountStream.pendingTransactionVerificationCount++;
-      let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
+
       try {
+        let senderInfo = await accountStream.senderInfoPromise;
+        senderAccount = senderInfo.senderAccount;
+        multisigMemberAccounts = senderInfo.multisigMemberAccounts;
+
         if (multisigMemberAccounts) {
           this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
         } else {
@@ -2668,7 +2685,7 @@ module.exports = class LDPoSChainModule {
         accountStream.pendingTransactionVerificationCount--;
         this.cleanupPendingTransactionStream(senderAddress);
         throw new Error(
-          `Received unauthorized transaction ${transaction.id} - ${error.message}`
+          `Received unauthorized transaction ${transaction.id} in queue - ${error.message}`
         );
       }
 
@@ -2683,11 +2700,13 @@ module.exports = class LDPoSChainModule {
     this.pendingTransactionStreams[senderAddress] = accountStream;
 
     let accountStreamConsumer = accountStream.createConsumer();
-
     accountStream.senderInfoPromise = this.getTransactionSenderAccountDetails(senderAddress);
-    let { senderAccount, multisigMemberAccounts } = await accountStream.senderInfoPromise;
 
     try {
+      let senderInfo = await accountStream.senderInfoPromise;
+      senderAccount = senderInfo.senderAccount;
+      multisigMemberAccounts = senderInfo.multisigMemberAccounts;
+
       if (multisigMemberAccounts) {
         this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
       } else {
@@ -2701,7 +2720,7 @@ module.exports = class LDPoSChainModule {
     } catch (error) {
       accountStream.pendingTransactionVerificationCount--;
       this.cleanupPendingTransactionStream(senderAddress);
-      throw new Error(`Received invalid transaction - ${error.message}`);
+      throw new Error(`Received unauthorized transaction ${transaction.id} - ${error.message}`);
     }
 
     (async () => {
@@ -3229,8 +3248,6 @@ module.exports = class LDPoSChainModule {
       forgingInterval: DEFAULT_FORGING_INTERVAL,
       forgerCount: DEFAULT_FORGER_COUNT,
       minForgerBlockSignatureRatio: DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO,
-      blockSignaturesToProvide: DEFAULT_BLOCK_SIGNATURES_TO_PROVIDE,
-      blockSignaturesToFetch: DEFAULT_BLOCK_SIGNATURES_TO_FETCH,
       fetchBlockLimit: DEFAULT_FETCH_BLOCK_LIMIT,
       fetchBlockPause: DEFAULT_FETCH_BLOCK_PAUSE,
       fetchBlockEndConfirmations: DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS,
@@ -3257,8 +3274,7 @@ module.exports = class LDPoSChainModule {
       maxConsecutiveTransactionFetchFailures: DEFAULT_MAX_CONSECUTIVE_TRANSACTION_FETCH_FAILURES,
       catchUpConsensusPollCount: DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT,
       catchUpConsensusMinRatio: DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO,
-      genesisIndexes: DEFAULT_GENESIS_INDEXES,
-      catchUpGenesisIndex: DEFAULT_CATCH_UP_GENESIS_INDEX,
+      geneses: DEFAULT_GENESES,
       apiLimit: DEFAULT_API_LIMIT,
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
@@ -3284,8 +3300,6 @@ module.exports = class LDPoSChainModule {
     this.forgingInterval = this.options.forgingInterval;
     this.forgerCount = this.options.forgerCount;
     this.minForgerBlockSignatureRatio = this.options.minForgerBlockSignatureRatio;
-    this.blockSignaturesToProvide = this.options.blockSignaturesToProvide;
-    this.blockSignaturesToFetch = this.options.blockSignaturesToFetch;
     this.autoSyncForgingKeyIndex = this.options.autoSyncForgingKeyIndex;
     this.propagationRandomness = this.options.propagationRandomness;
     this.minMultisigMembers = this.options.minMultisigMembers;
@@ -3300,15 +3314,8 @@ module.exports = class LDPoSChainModule {
     this.maxTransactionBackpressurePerAccount = this.options.maxTransactionBackpressurePerAccount;
     this.maxPendingTransactionsPerAccount = this.options.maxPendingTransactionsPerAccount;
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
-    this.genesisIndexes = this.options.genesisIndexes;
-    this.catchUpGenesisIndex = this.options.catchUpGenesisIndex;
-    this.minGenesisIndex = this.genesisIndexes.reduce(
-      (min, index) => min == null || index < min ? index : min,
-      null
-    );
-    if (this.catchUpGenesisIndex == null) {
-      this.catchUpGenesisIndex = this.minGenesisIndex;
-    }
+    this.geneses = this.options.geneses;
+    this.genesesHeights = Object.keys(this.geneses).map(heightString => Number(heightString));
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
     this.maxPrivateAPILimit = this.options.maxPrivateAPILimit;
@@ -3338,37 +3345,6 @@ module.exports = class LDPoSChainModule {
       );
     }
     this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
-
-    if (!Number.isInteger(this.blockSignaturesToProvide) || this.blockSignaturesToProvide < 0) {
-      throw new Error(
-        'The blockSignaturesToProvide option must be an integer greater than or equal to 0'
-      );
-    }
-    if (!Number.isInteger(this.blockSignaturesToFetch)) {
-      throw new Error(
-        'The blockSignaturesToFetch option must be an integer'
-      );
-    }
-    if (this.blockSignaturesToFetch < this.blockSignaturesToProvide) {
-      throw new Error(
-        `The blockSignaturesToFetch option was less than ${
-          this.blockSignaturesToProvide
-        } - It cannot be less than the blockSignaturesToProvide option`
-      );
-    }
-    let majorityBlockSignatureCount = Math.floor(this.forgerCount * this.minForgerBlockSignatureRatio);
-
-    if (this.blockSignaturesToProvide < majorityBlockSignatureCount) {
-      this.logger.warn(
-        new Error(
-          `The blockSignaturesToProvide option was ${
-            this.blockSignaturesToProvide
-          } which is less than the required delegate majority of ${
-            majorityBlockSignatureCount
-          } - Node will operate in lite mode`
-        )
-      );
-    }
 
     this.cryptoClientLibPath = this.options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
     let { createClient } = require(this.cryptoClientLibPath);
@@ -3459,16 +3435,14 @@ module.exports = class LDPoSChainModule {
 
     let moduleState = {};
 
-    // Create an entry for each genesis index so that other peers can route requests to us based
-    // on which genesis starting points we support.
-    for (let i of this.genesisIndexes) {
-      moduleState[`${GENESIS_INDEX_INDICATOR}${i}`] = 1;
-    }
-
-    // Create an entry for each signature count so that other peers can route requests to us based
-    // on how many block signatures we keep.
-    for (let i = 0; i <= this.blockSignaturesToProvide; i++) {
-      moduleState[`${BLOCK_SIGNATURE_COUNT_INDICATOR}${i}`] = 1;
+    // Create an entry for each genesis height and each signature index so that
+    // other peers can route requests to us based on which genesis starting points
+    // we support and how many signatures we provide for each one.
+    for (let genHeight of this.genesesHeights) {
+      let signatureCount = this.geneses[genHeight];
+      for (let i = 0; i <= signatureCount; i++) {
+        moduleState[`${GENESIS_INDICATOR}${genHeight}-${i}`] = 1;
+      }
     }
 
     await this.channel.invoke('app:updateModuleState', {
