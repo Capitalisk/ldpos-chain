@@ -1256,7 +1256,7 @@ module.exports = class LDPoSChainModule {
       signatures: blockSignaturesToStore
     }, synched);
 
-    this.logger.info(`Upserted block ${block.id} into data store`);
+    this.logger.debug(`Upserted block ${block.id} into data store`);
 
     // Remove transactions which have been processed as part of the current block from pending transaction maps.
     for (let txn of transactions) {
@@ -2976,7 +2976,7 @@ module.exports = class LDPoSChainModule {
           validateBlockSchema(block, 0, this.maxTransactionsPerBlock, 0, 0, this.networkSymbol);
 
           if (block.id === this.lastReceivedBlock.id) {
-            this.logger.debug(`Block ${block.id} has already been received before`);
+            this.logger.info(`Block ${block.id} has already been received before`);
             return;
           }
 
@@ -3127,7 +3127,7 @@ module.exports = class LDPoSChainModule {
           this.validateBlockSignerIsNotForger(lastReceivedBlock, blockSignature);
 
           if (this.lastReceivedSignerAddressSet.has(blockSignature.signerAddress)) {
-            this.logger.debug(
+            this.logger.info(
               `Block signature of delegate ${blockSignature.signerAddress} has already been received before`
             );
             return;
