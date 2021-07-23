@@ -43,8 +43,8 @@ const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
 const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
 const DEFAULT_AUTO_SYNC_FORGING_KEY_INDEX = true;
-const DEFAULT_PROPAGATION_TIMEOUT = 6000;
-const DEFAULT_PROPAGATION_RANDOMNESS = 2000;
+const DEFAULT_PROPAGATION_TIMEOUT = 7000;
+const DEFAULT_PROPAGATION_RANDOMNESS = 5000;
 const DEFAULT_TIME_POLL_INTERVAL = 200;
 const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
@@ -2184,7 +2184,6 @@ module.exports = class LDPoSChainModule {
       fetchBlockPause,
       fetchBlockEndConfirmations,
       propagationTimeout,
-      propagationRandomness,
       timePollInterval,
       maxTransactionsPerBlock,
       minMultisigMembers,
