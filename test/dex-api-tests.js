@@ -482,7 +482,7 @@ describe('DEX API tests', async () => {
         assert.equal(transactions[2].message, '3');
       });
 
-      it('should return transactions which are more recent than fromTimestamp when order is desc', async () => {
+      it('should return transactions which are older than fromTimestamp when order is desc', async () => {
         let transactions = await chainModule.actions.getOutboundTransactions.handler({
           params: {
             walletAddress: clientForger.walletAddress,
