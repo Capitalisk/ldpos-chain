@@ -583,7 +583,7 @@ describe('DEX API tests', async () => {
 
     describe('getOutboundTransactionsFromBlock action', async () => {
 
-      it('should return an array of transactions sent to the specified walletAddress', async () => {
+      it('should return an array of transactions sent from the specified walletAddress', async () => {
         let transactions = await chainModule.actions.getOutboundTransactionsFromBlock.handler({
           params: {
             walletAddress: clientForger.walletAddress,
