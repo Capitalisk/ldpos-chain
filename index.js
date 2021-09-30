@@ -1430,18 +1430,6 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifyTransactionIsNotInFuture(transaction) {
-    let { timestamp } = transaction;
-
-    if (timestamp > Date.now()) {
-      throw new Error(
-        `Transaction timestamp ${
-          timestamp
-        } is in the future`
-      );
-    }
-  }
-
   verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck) {
     validateSigTransactionSchema(transaction, signatureCheck);
 
@@ -1680,7 +1668,6 @@ module.exports = class LDPoSChainModule {
 
   async verifySigTransactionAuthorization(senderAccount, transaction, fullCheck) {
     let txnTotal = this.verifyAccountMeetsRequirements(senderAccount, transaction);
-    this.verifyTransactionIsNotInFuture(transaction);
 
     if (fullCheck) {
       this.verifySigTransactionOffersMinFee(transaction);
@@ -1697,7 +1684,6 @@ module.exports = class LDPoSChainModule {
 
   async verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, fullCheck) {
     let txnTotal = this.verifyAccountMeetsRequirements(senderAccount, transaction);
-    this.verifyTransactionIsNotInFuture(transaction);
 
     if (fullCheck) {
       this.verifyMultisigTransactionOffersMinFee(transaction, multisigMemberAccounts);
