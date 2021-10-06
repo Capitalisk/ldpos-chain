@@ -599,8 +599,8 @@ module.exports = class LDPoSChainModule {
     if (this.moduleState.isOnTip) {
       try {
         await this.updateModuleState({
-          isOnTip: false,
-          ...this.moduleState
+          ...this.moduleState,
+          isOnTip: false
         });
         this.moduleState.isOnTip = false;
       } catch (error) {
@@ -2362,8 +2362,8 @@ module.exports = class LDPoSChainModule {
           if (!this.moduleState.isOnTip) {
             try {
               await this.updateModuleState({
-                isOnTip: true,
-                ...this.moduleState
+                ...this.moduleState,
+                isOnTip: true
               });
               this.moduleState.isOnTip = true;
             } catch (error) {
