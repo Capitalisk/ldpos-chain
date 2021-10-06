@@ -139,6 +139,9 @@ module.exports = class LDPoSChainModule {
 
     this.isCatchingUp = false;
     this.isActive = false;
+    this.moduleState = {
+      isOnTip: false
+    };
   }
 
   get dependencies() {
@@ -590,8 +593,20 @@ module.exports = class LDPoSChainModule {
       };
     }
 
-    this.isCatchingUp = true;
     this.logger.info('Attempting to catch up with the network');
+    this.isCatchingUp = true;
+
+    if (this.moduleState.isOnTip) {
+      try {
+        await this.updateModuleState({
+          isOnTip: false,
+          ...this.moduleState
+        });
+        this.moduleState.isOnTip = false;
+      } catch (error) {
+        this.logger.warn(error);
+      }
+    }
 
     let consecutiveFailureCount = 0;
 
@@ -981,34 +996,14 @@ module.exports = class LDPoSChainModule {
       } else {
         senderAccountChanges.balance -= txnFee;
         senderAccountChanges.lastTransactionTimestamp = timestamp;
-        if (type === 'vote') {
-          try {
-            await this.verifyVoteTransaction(txn);
-            voteChangeList.push({
-              id: txn.id,
-              type,
-              voterAddress: senderAddress,
-              delegateAddress: txn.delegateAddress
-            });
-          } catch (error) {
-            // If the transaction is invalid, it will be a no-op but
-            // fees will still be charged for spam-prevention.
-            this.logger.debug(error.message);
-          }
-        } if (type === 'unvote') {
-          try {
-            await this.verifyUnvoteTransaction(txn);
-            voteChangeList.push({
-              id: txn.id,
-              type,
-              voterAddress: senderAddress,
-              delegateAddress: txn.delegateAddress
-            });
-          } catch (error) {
-            // If the transaction is invalid, it will be a no-op but
-            // fees will still be charged for spam-prevention.
-            this.logger.debug(error.message);
-          }
+        if (type === 'vote' || type === 'unvote') {
+          voteChangeList.push({
+            id: txn.id,
+            type,
+            voterAddress: senderAddress,
+            delegateAddress: txn.delegateAddress,
+            transaction: txn
+          });
         } else if (type === 'registerSigDetails') {
           let {
             newSigPublicKey,
@@ -1040,18 +1035,12 @@ module.exports = class LDPoSChainModule {
             delegateAddress: senderAddress
           });
         } else if (type === 'registerMultisigWallet') {
-          try {
-            await this.verifyRegisterMultisigWalletTransaction(txn);
-            multisigRegistrationList.push({
-              multisigAddress: senderAddress,
-              memberAddresses: txn.memberAddresses,
-              requiredSignatureCount: txn.requiredSignatureCount
-            });
-          } catch (error) {
-            // If the transaction is invalid, it will be a no-op but
-            // fees will still be charged for spam-prevention.
-            this.logger.debug(error.message);
-          }
+          multisigRegistrationList.push({
+            multisigAddress: senderAddress,
+            memberAddresses: txn.memberAddresses,
+            requiredSignatureCount: txn.requiredSignatureCount,
+            transaction: txn
+          });
         }
       }
       this.logger.info(`Processed transaction ${txn.id}`);
@@ -1168,27 +1157,6 @@ module.exports = class LDPoSChainModule {
           let delegateInfo = affectedDelegateDetails[voteChange.delegateAddress];
           try {
             if (voteChange.type === 'vote') {
-              let accountVotes;
-              try {
-                accountVotes = await this.dal.getAccountVotes(voterAddress);
-              } catch (error) {
-                if (error.name !== 'VoterAccountDidNotExistError') {
-                  throw error;
-                }
-                accountVotes = [];
-              }
-              if (accountVotes.length >= this.maxVotesPerAccount) {
-                let error = new Error(
-                  `Voter ${
-                    voterAddress
-                  } exceeded the maximum amount of ${
-                    this.maxVotesPerAccount
-                  } votes`
-                );
-                error.name = 'VoterAccountExceededMaxVotesError';
-                error.type = 'InvalidActionError';
-                throw error;
-              }
               await this.dal.vote({
                 id: voteChange.id,
                 voterAddress,
@@ -1205,6 +1173,7 @@ module.exports = class LDPoSChainModule {
             }
           } catch (error) {
             if (error.type === 'InvalidActionError') {
+              voteChange.transaction.error = error;
               this.logger.debug(error.message);
             } else {
               throw error;
@@ -1241,6 +1210,7 @@ module.exports = class LDPoSChainModule {
         senderAccountChanges.requiredSignatureCount = requiredSignatureCount;
       } catch (error) {
         if (error.type === 'InvalidActionError') {
+          multisigRegistration.transaction.error = error;
           this.logger.debug(error.message);
         } else {
           throw error;
@@ -1532,80 +1502,6 @@ module.exports = class LDPoSChainModule {
           `Multisig transaction id ${transaction.id} was invalid`
         );
       }
-    }
-  }
-
-  async verifyVoteTransaction(transaction) {
-    let { senderAddress, delegateAddress } = transaction;
-    let hasDelegate;
-    try {
-      hasDelegate = await this.dal.hasDelegate(delegateAddress);
-    } catch (error) {
-      throw new Error(
-        `Failed to verify delegate account ${delegateAddress} for voting because of error: ${error.message}`
-      );
-    }
-    if (!hasDelegate) {
-      throw new Error(
-        `Delegate ${delegateAddress} did not exist to vote for`
-      );
-    }
-
-    let votes = await this.dal.getAccountVotes(senderAddress);
-    let voteSet = new Set(votes);
-
-    if (voteSet.size >= this.maxVotesPerAccount) {
-      throw new Error(
-        `Voter account ${
-          senderAddress
-        } has already voted for ${
-          voteSet.size
-        } delegates so it cannot vote for any more`
-      );
-    }
-
-    if (voteSet.has(delegateAddress)) {
-      throw new Error(
-        `Voter account ${
-          senderAddress
-        } has already voted for the delegate ${
-          delegateAddress
-        }`
-      );
-    }
-  }
-
-  async verifyUnvoteTransaction(transaction) {
-    let { senderAddress, delegateAddress } = transaction;
-    let hasDelegate;
-    try {
-      hasDelegate = await this.dal.hasDelegate(delegateAddress);
-    } catch (error) {
-      throw new Error(
-        `Failed to verify delegate ${delegateAddress} for unvoting because of error: ${error.message}`
-      );
-    }
-    if (!hasDelegate) {
-      throw new Error(
-        `Delegate ${delegateAddress} did not exist to unvote`
-      );
-    }
-    let hasExistingVote;
-    try {
-      hasExistingVote = await this.dal.hasVoteForDelegate(senderAddress, delegateAddress);
-    } catch (error) {
-      throw new Error(
-        `Failed to verify vote from ${senderAddress} for unvoting because of error: ${error.message}`
-      );
-    }
-    if (!hasExistingVote) {
-      throw new Error(
-        `Unvote transaction could not unvote delegate ${
-          delegateAddress
-        } because the sender ${
-          senderAddress
-        } was not voting for it`
-      );
     }
   }
 
@@ -2463,6 +2359,17 @@ module.exports = class LDPoSChainModule {
             });
           }
           this.lastHandledBlock = block;
+          if (!this.moduleState.isOnTip) {
+            try {
+              await this.updateModuleState({
+                isOnTip: true,
+                ...this.moduleState
+              });
+              this.moduleState.isOnTip = true;
+            } catch (error) {
+              this.logger.warn(error);
+            }
+          }
         } catch (error) {
           if (this.isActive) {
             this.logger.error(error);
@@ -3225,6 +3132,12 @@ module.exports = class LDPoSChainModule {
     }
   }
 
+  async updateModuleState(moduleState) {
+    return this.channel.invoke('app:updateModuleState', {
+      [this.alias]: moduleState
+    });
+  }
+
   async load(channel, options) {
     this.channel = channel;
     this.isActive = true;
@@ -3322,7 +3235,8 @@ module.exports = class LDPoSChainModule {
     this.genesis = require(this.options.genesisPath || DEFAULT_GENESIS_PATH);
     try {
       await this.dal.init({
-        genesis: this.genesis
+        genesis: this.genesis,
+        maxVotesPerAccount: this.maxVotesPerAccount
       });
     } catch (error) {
       throw new Error(
@@ -3418,21 +3332,17 @@ module.exports = class LDPoSChainModule {
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastHandledBlock = this.lastProcessedBlock;
 
-    let moduleState = {};
-
     // Create an entry for each genesis height and each signature index so that
     // other peers can route requests to us based on which genesis starting points
     // we support and how many signatures we provide for each one.
     for (let genHeight of this.genesesHeights) {
       let signatureCount = this.geneses[genHeight];
       for (let i = 0; i <= signatureCount; i++) {
-        moduleState[`${GENESIS_INDICATOR}${genHeight}-${i}`] = 1;
+        this.moduleState[`${GENESIS_INDICATOR}${genHeight}-${i}`] = 1;
       }
     }
 
-    await this.channel.invoke('app:updateModuleState', {
-      [this.alias]: moduleState
-    });
+    await this.updateModuleState(this.moduleState);
 
     this.startPendingTransactionExpiryLoop();
     this.startTransactionPropagationLoop();

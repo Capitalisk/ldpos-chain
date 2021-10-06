@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const ID_BYTE_SIZE = 20;
+const DEFAULT_MAX_VOTES_PER_ACCOUNT = 5;
 
 class DAL {
   constructor() {
@@ -18,9 +19,10 @@ class DAL {
   }
 
   async init(options) {
-    let { genesis } = options;
+    let { genesis, maxVotesPerAccount } = options;
     let { accounts } = genesis;
     let multisigWalletList = genesis.multisigWallets || [];
+    this.maxVotesPerAccount = maxVotesPerAccount == null ? DEFAULT_MAX_VOTES_PER_ACCOUNT : maxVotesPerAccount;
 
     await Promise.all(
       accounts.map(async (accountInfo) => {
@@ -152,7 +154,33 @@ class DAL {
       this.ballots[ballot.id] = {...ballot, type: 'vote', active: true};
       return;
     }
+
     let { voterAddress, delegateAddress } = ballot;
+    let hasDelegate = await this.hasDelegate(delegateAddress);
+    if (!hasDelegate) {
+      let error = new Error(
+        `Delegate ${delegateAddress} did not exist to vote for`
+      );
+      error.name = 'DelegateDidNotExistError'
+      error.type = 'InvalidActionError';
+      throw error;
+    }
+    let votes = await this.getAccountVotes(voterAddress);
+    let voteSet = new Set(votes);
+
+    if (voteSet.size >= this.maxVotesPerAccount) {
+      let error = new Error(
+        `Voter account ${
+          voterAddress
+        } has already voted for ${
+          voteSet.size
+        } delegates so it cannot vote for any more`
+      );
+      error.name = 'VoterExceededVoteCountError';
+      error.type = 'InvalidActionError';
+      throw error;
+    }
+
     let hasExistingVote = await this.hasVoteForDelegate(voterAddress, delegateAddress);
     if (hasExistingVote) {
       let error = new Error(
@@ -181,7 +209,18 @@ class DAL {
       this.ballots[ballot.id] = {...ballot, type: 'unvote', active: true};
       return;
     }
+
     let { voterAddress, delegateAddress } = ballot;
+    let hasDelegate = await this.hasDelegate(delegateAddress);
+    if (!hasDelegate) {
+      let error = new Error(
+        `Delegate ${delegateAddress} did not exist to unvote`
+      );
+      error.name = 'DelegateDidNotExistError';
+      error.type = 'InvalidActionError';
+      throw error;
+    }
+
     let existingVoteBallots = Object.values(this.ballots).filter(
       currentBallot => (
         currentBallot.active &&
