@@ -200,8 +200,14 @@ function validateTransactionAmount(propertyName, packet, maxSpendableDigits) {
   if (amount.length > maxSpendableDigits) {
     throw new Error(`Transaction amount in ${propertyName} exceeded the maximum spendable digits`);
   }
-  if (BigInt(amount).toString() !== amount) {
-    throw new Error(`Transaction amount in ${propertyName} was not serializable`);
+  let amountBigInt;
+  try {
+    amountBigInt = BigInt(amount);
+  } catch (error) {
+    throw new Error(`Transaction amount in ${propertyName} was not a valid big integer string`);
+  }
+  if (amountBigInt.toString() !== amount) {
+    throw new Error(`Transaction amount in ${propertyName} could not be serialized in a deterministic way`);
   }
 }
 
@@ -213,8 +219,14 @@ function validateTransactionFee(propertyName, packet, maxSpendableDigits) {
   if (fee.length > maxSpendableDigits) {
     throw new Error(`Transaction fee in ${propertyName} exceeded the maximum spendable digits`);
   }
-  if (BigInt(fee).toString() !== fee) {
-    throw new Error(`Transaction fee in ${propertyName} was not serializable`);
+  let feeBigInt;
+  try {
+    feeBigInt = BigInt(fee);
+  } catch (error) {
+    throw new Error(`Transaction fee in ${propertyName} was not a valid big integer string`);
+  }
+  if (feeBigInt.toString() !== fee) {
+    throw new Error(`Transaction fee in ${propertyName} could not be serialized in a deterministic way`);
   }
 }
 
