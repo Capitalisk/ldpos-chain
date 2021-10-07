@@ -64,6 +64,7 @@ const DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO = .5;
 const DEFAULT_GENESES = {
   0: 9
 };
+const DEFAULT_BLOCK_FORGER_SAMPLING_FACTOR = 4;
 const DEFAULT_API_LIMIT = 100;
 const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
@@ -1226,7 +1227,7 @@ module.exports = class LDPoSChainModule {
       signatures: blockSignaturesToStore
     }, synched);
 
-    this.logger.debug(`Upserted block ${block.id} into data store`);
+    this.logger.debug(`Upserted block ${block.id} into data store at height ${height}`);
 
     // Remove transactions which have been processed as part of the current block from pending transaction maps.
     for (let txn of transactions) {
@@ -3138,6 +3139,100 @@ module.exports = class LDPoSChainModule {
     });
   }
 
+  async attemptGetSignedBlockAtHeight(height) {
+    try {
+      return await this.dal.getSignedBlockAtHeight(height);
+    } catch (error) {
+      if (error.name !== 'BlockDidNotExistError') {
+        throw error;
+      }
+    }
+    return null;
+  }
+
+  async getMaxForgerCountAtHeight(height) {
+    let blockSampleSize = this.forgerCount * this.blockForgerSamplingFactor;
+    let startHeight = Math.max(0, height - blockSampleSize);
+    let blockList = await this.dal.getBlocksBetweenHeights(startHeight, height, blockSampleSize);
+    let forgerSet = new Set();
+    for (let block of blockList) {
+      forgerSet.add(block.forgerAddress);
+    }
+    return forgerSet.size;
+  }
+
+  async checkGenesesConfig() {
+    if (this.genesesHeights[0] !== 0) {
+      throw new Error(
+        'Geneses config was invalid - The first key must be 0'
+      );
+    }
+    let rangeStartHeight = 0;
+
+    let lastGenesesHeight = this.genesesHeights[this.genesesHeights.length - 1];
+    let maxBlockHeight = await this.dal.getMaxBlockHeight();
+
+    let milestoneHeights = [...this.genesesHeights];
+    if (maxBlockHeight > lastGenesesHeight) {
+      milestoneHeights.push(maxBlockHeight);
+    }
+    let milestonesLength = milestoneHeights.length;
+
+    for (let i = 1; i < milestonesLength; i++) {
+      let height = milestoneHeights[i];
+
+      let requiredSignatureCount = this.geneses[height];
+      let rangeEndHeight = height - 1;
+      let rangeHeightDiff = rangeEndHeight - rangeStartHeight;
+      let rangeMidHeight = rangeStartHeight + Math.round(rangeHeightDiff / 2);
+
+      let [ maxDelegateStartCount, maxDelegateMidCount, maxDelegateEndCount ] = await Promise.all([
+        this.getMaxForgerCountAtHeight(rangeStartHeight),
+        this.getMaxForgerCountAtHeight(rangeMidHeight),
+        this.getMaxForgerCountAtHeight(rangeEndHeight)
+      ]);
+
+      let delegateStartMajority = Math.floor(maxDelegateStartCount * this.minForgerBlockSignatureRatio);
+      let delegateMidMajority = Math.floor(maxDelegateMidCount * this.minForgerBlockSignatureRatio);
+      let delegateEndMajority = Math.floor(maxDelegateEndCount * this.minForgerBlockSignatureRatio);
+
+      let requiredStartSignatureCount = Math.min(delegateStartMajority, requiredSignatureCount);
+      let requiredMidSignatureCount = Math.min(delegateMidMajority, requiredSignatureCount);
+      let requiredEndSignatureCount = Math.min(delegateEndMajority, requiredSignatureCount);
+
+      let [ startBlock, midBlock, endBlock ] = await Promise.all([
+        this.attemptGetSignedBlockAtHeight(rangeStartHeight),
+        this.attemptGetSignedBlockAtHeight(rangeMidHeight),
+        this.attemptGetSignedBlockAtHeight(rangeEndHeight)
+      ]);
+
+      let unmetSignatureCountList = [];
+      if (startBlock && startBlock.signatures.length < requiredStartSignatureCount) {
+        unmetSignatureCountList.push(startBlock.signatures.length);
+      }
+      if (midBlock && midBlock.signatures.length < requiredMidSignatureCount) {
+        unmetSignatureCountList.push(midBlock.signatures.length);
+      }
+      if (endBlock && endBlock.signatures.length < requiredEndSignatureCount) {
+        unmetSignatureCountList.push(endBlock.signatures.length);
+      }
+
+      if (unmetSignatureCountList.length) {
+        let minSignatureCount = Math.min(...unmetSignatureCountList);
+
+        throw new Error(
+          `The geneses config was invalid at height ${
+            height
+          } - Node did not have a sufficient number of block signatures - Try lowering the signature requirement to ${
+            minSignatureCount
+          } for that height`
+        );
+      }
+
+      rangeStartHeight = height;
+    }
+  }
+
   async load(channel, options) {
     this.channel = channel;
     this.isActive = true;
@@ -3173,6 +3268,7 @@ module.exports = class LDPoSChainModule {
       catchUpConsensusPollCount: DEFAULT_CATCH_UP_CONSENSUS_POLL_COUNT,
       catchUpConsensusMinRatio: DEFAULT_CATCH_UP_CONSENSUS_MIN_RATIO,
       geneses: DEFAULT_GENESES,
+      blockForgerSamplingFactor: DEFAULT_BLOCK_FORGER_SAMPLING_FACTOR,
       apiLimit: DEFAULT_API_LIMIT,
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
@@ -3214,6 +3310,7 @@ module.exports = class LDPoSChainModule {
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
     this.geneses = this.options.geneses;
     this.genesesHeights = Object.keys(this.geneses).map(heightString => Number(heightString));
+    this.blockForgerSamplingFactor = this.options.blockForgerSamplingFactor;
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
     this.maxPrivateAPILimit = this.options.maxPrivateAPILimit;
@@ -3243,6 +3340,8 @@ module.exports = class LDPoSChainModule {
         `Failed to initialize from genesis because of error: ${error.message}`
       );
     }
+    await this.checkGenesesConfig();
+
     this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
 
     this.cryptoClientLibPath = this.options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
