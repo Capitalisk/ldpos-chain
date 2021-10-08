@@ -3167,7 +3167,6 @@ module.exports = class LDPoSChainModule {
         'Geneses config was invalid - The first key must be 0'
       );
     }
-    let rangeStartHeight = 0;
 
     let lastGenesesHeight = this.genesesHeights[this.genesesHeights.length - 1];
     let maxBlockHeight = await this.dal.getMaxBlockHeight();
@@ -3179,10 +3178,10 @@ module.exports = class LDPoSChainModule {
     let milestonesLength = milestoneHeights.length;
 
     for (let i = 1; i < milestonesLength; i++) {
-      let height = milestoneHeights[i];
+      let rangeStartHeight = milestoneHeights[i - 1];
 
-      let requiredSignatureCount = this.geneses[height];
-      let rangeEndHeight = height - 1;
+      let requiredSignatureCount = this.geneses[rangeStartHeight];
+      let rangeEndHeight = milestoneHeights[i] - 1;
       let rangeHeightDiff = rangeEndHeight - rangeStartHeight;
       let rangeMidHeight = rangeStartHeight + Math.round(rangeHeightDiff / 2);
 
@@ -3192,13 +3191,9 @@ module.exports = class LDPoSChainModule {
         this.getMaxForgerCountAtHeight(rangeEndHeight)
       ]);
 
-      let delegateStartMajority = Math.floor(maxDelegateStartCount * this.minForgerBlockSignatureRatio);
-      let delegateMidMajority = Math.floor(maxDelegateMidCount * this.minForgerBlockSignatureRatio);
-      let delegateEndMajority = Math.floor(maxDelegateEndCount * this.minForgerBlockSignatureRatio);
-
-      let requiredStartSignatureCount = Math.min(delegateStartMajority, requiredSignatureCount);
-      let requiredMidSignatureCount = Math.min(delegateMidMajority, requiredSignatureCount);
-      let requiredEndSignatureCount = Math.min(delegateEndMajority, requiredSignatureCount);
+      let requiredStartSignatureCount = Math.min(maxDelegateStartCount, requiredSignatureCount);
+      let requiredMidSignatureCount = Math.min(maxDelegateMidCount, requiredSignatureCount);
+      let requiredEndSignatureCount = Math.min(maxDelegateEndCount, requiredSignatureCount);
 
       let [ startBlock, midBlock, endBlock ] = await Promise.all([
         this.attemptGetSignedBlockAtHeight(rangeStartHeight),
@@ -3222,14 +3217,12 @@ module.exports = class LDPoSChainModule {
 
         throw new Error(
           `The geneses config was invalid at height ${
-            height
+            rangeStartHeight
           } - Node did not have a sufficient number of block signatures - Try lowering the signature requirement to ${
             minSignatureCount
           } for that height`
         );
       }
-
-      rangeStartHeight = height;
     }
   }
 
