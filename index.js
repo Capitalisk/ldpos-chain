@@ -3162,9 +3162,9 @@ module.exports = class LDPoSChainModule {
   }
 
   async checkGenesesConfig() {
-    if (this.genesesHeights[0] !== 0) {
+    if (!this.genesesHeights.length) {
       throw new Error(
-        'Geneses config was invalid - The first key must be 0'
+        'Geneses config was invalid - There must be at least one genesis'
       );
     }
 
@@ -3191,9 +3191,20 @@ module.exports = class LDPoSChainModule {
         this.getMaxForgerCountAtHeight(rangeEndHeight)
       ]);
 
-      let requiredStartSignatureCount = Math.min(maxDelegateStartCount, requiredSignatureCount);
-      let requiredMidSignatureCount = Math.min(maxDelegateMidCount, requiredSignatureCount);
-      let requiredEndSignatureCount = Math.min(maxDelegateEndCount, requiredSignatureCount);
+      // Subtract 1 from delegate counts because the forger cannot also be a signer; this means
+      // that if there are x delegates, then the maximum possible number of signatures is x-1.
+      let requiredStartSignatureCount = Math.min(
+        Math.max(0, maxDelegateStartCount - 1),
+        requiredSignatureCount
+      );
+      let requiredMidSignatureCount = Math.min(
+        Math.max(0, maxDelegateMidCount - 1),
+        requiredSignatureCount
+      );
+      let requiredEndSignatureCount = Math.min(
+        Math.max(0, maxDelegateEndCount - 1),
+        requiredSignatureCount
+      );
 
       let [ startBlock, midBlock, endBlock ] = await Promise.all([
         this.attemptGetSignedBlockAtHeight(rangeStartHeight),
