@@ -541,6 +541,14 @@ module.exports = class LDPoSChainModule {
         },
         isPublic: true
       },
+      getChainInfo: {
+        handler: async action => this.chainInfo,
+        isPublic: true
+      },
+      getAPIInfo: {
+        handler: async action => this.apiInfo,
+        isPublic: true
+      },
       getModuleOptions: {
         handler: async action => this.options
       }
@@ -3280,6 +3288,27 @@ module.exports = class LDPoSChainModule {
       maxPrivateAPIOffset: DEFAULT_MAX_PRIVATE_API_OFFSET
     };
     this.options = {...defaultOptions, ...options};
+    this.chainInfo = {
+      forgingInterval: this.options.forgingInterval,
+      forgerCount: this.options.forgerCount,
+      minForgerBlockSignatureRatio: this.options.minForgerBlockSignatureRatio,
+      minTransactionsPerBlock: this.options.minTransactionsPerBlock,
+      maxTransactionsPerBlock: this.options.maxTransactionsPerBlock,
+      minMultisigMembers: this.options.minMultisigMembers,
+      maxMultisigMembers: this.options.maxMultisigMembers,
+      maxSpendableDigits: this.options.maxSpendableDigits,
+      maxTransactionMessageLength: this.options.maxTransactionMessageLength,
+      maxVotesPerAccount: this.options.maxVotesPerAccount,
+      maxTransactionBackpressurePerAccount: this.options.maxTransactionBackpressurePerAccount,
+      maxPendingTransactionsPerAccount: this.options.maxPendingTransactionsPerAccount
+    };
+    this.apiInfo = {
+      apiLimit: this.options.apiLimit,
+      maxPublicAPILimit: this.options.maxPublicAPILimit,
+      maxPrivateAPILimit: this.options.maxPrivateAPILimit,
+      maxPublicAPIOffset: this.options.maxPublicAPIOffset,
+      maxPrivateAPIOffset: this.options.maxPrivateAPIOffset
+    };
 
     let unsanitizedMinTransactionFees = {
       ...DEFAULT_MIN_TRANSACTION_FEES,
@@ -3290,7 +3319,7 @@ module.exports = class LDPoSChainModule {
     for (let transactionType of transactionTypeList) {
       minTransactionFees[transactionType] = BigInt(unsanitizedMinTransactionFees[transactionType]);
     }
-    this.options.minTransactionFees = minTransactionFees;
+    this.options.minTransactionFees = unsanitizedMinTransactionFees;
     this.minTransactionFees = minTransactionFees;
     this.minMultisigRegistrationFeePerMember = BigInt(this.options.minMultisigRegistrationFeePerMember);
     this.minMultisigTransactionFeePerMember = BigInt(this.options.minMultisigTransactionFeePerMember);
