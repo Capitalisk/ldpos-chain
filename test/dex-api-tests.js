@@ -11,8 +11,8 @@ const LDPoSChainModule = require('../index');
 
 const NETWORK_SYMBOL = 'ldpos';
 
-const useKnexDal = process.env.USE_KNEX_DAL;
-const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
+const usePgDal = process.env.USE_PG_DAL;
+const dalLibPath = usePgDal ? 'ldpos-pg-dal' : './test/utils/dal';
 
 // This test suite can be adapted to check whether or not a custom chain module is compatible with Lisk DEX.
 // All the boilerplate can be modified except the 'it' blocks where the assertions are made.

@@ -6,18 +6,18 @@ Simple DPoS chain module compatible with LDEX
 yarn test
 ```
 
-## Running tests using knex DAL
-- Start postgres inside docker container 
+## Running tests using pg DAL
+- Start postgres inside docker container
 ```shell script
 ./scripts/start-postgres.sh
-``` 
+```
 
-- Run knex-dal tests
+- Run pg-dal tests
 ```shell script
-  yarn test:using-dal-knex
+  yarn test:using-pg-dal
 ```
 
 - Stop postgres
 ```shell script
 ./scripts/stop-postgres.sh
-``` 
+```

@@ -6,13 +6,13 @@ const MockLDPoSChainModule = require('./utils/chain');
 const { sha256 } = require('./utils/hash');
 const wait = require('./utils/wait');
 const { createClient } = require('ldpos-client');
-const { LDPoSKnexDAL } = require('ldpos-knex-dal');
+const { LDPoSPgDAL } = require('ldpos-pg-dal');
 const LDPoSChainModule = require('../index');
 
 const NETWORK_SYMBOL = 'ldpos';
 
-const useKnexDal = process.env.USE_KNEX_DAL;
-const dalLibPath = useKnexDal ? 'ldpos-knex-dal' : './test/utils/dal';
+const usePgDal = process.env.USE_PG_DAL;
+const dalLibPath = usePgDal ? 'ldpos-pg-dal' : './test/utils/dal';
 
 describe('Functional tests', async () => {
   let chainModule;
