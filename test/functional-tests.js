@@ -11,8 +11,8 @@ const LDPoSChainModule = require('../index');
 
 const NETWORK_SYMBOL = 'ldpos';
 
-const usePgDal = process.env.USE_PG_DAL;
-const dalLibPath = usePgDal ? 'ldpos-pg-dal' : './test/utils/dal';
+const useDal = process.env.USE_DAL;
+const dalLibPath = useDal ? useDal : './test/utils/dal';
 
 describe('Functional tests', async () => {
   let chainModule;

@@ -11,7 +11,8 @@
     "start:pgadmin": "cd node_modules/ldpos-pg-dal && yarn start:pgadmin",
     "stop:pgadmin": "cd node_modules/ldpos-pg-dal && yarn stop:pgadmin",
     "reset:pgadmin": "cd node_modules/ldpos-pg-dal && yarn reset:pgadmin",
-    "test:using-pg-dal": "USE_PG_DAL=true mocha --reporter spec --timeout 50000 --slow 50000"
+    "test:using-pg-dal": "USE_DAL=ldpos-pg-dal mocha --reporter spec --timeout 50000 --slow 50000",
+    "test:using-sqlite-dal": "USE_DAL=ldpos-sqlite-dal mocha --reporter spec --timeout 50000 --slow 50000"
   },
   "keywords": [
     "blockchain",
