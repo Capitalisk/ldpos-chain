@@ -1572,14 +1572,11 @@ module.exports = class LDPoSChainModule {
   }
 
   async verifySigTransactionAuthorization(senderAccount, transaction, fullCheck) {
-    let txnTotal = this.verifyAccountMeetsRequirements(senderAccount, transaction);
-
     if (fullCheck) {
       this.verifySigTransactionOffersMinFee(transaction);
       await this.verifyTransactionDoesNotAlreadyExist(transaction);
     }
-
-    return txnTotal;
+    return this.verifyAccountMeetsRequirements(senderAccount, transaction);
   }
 
   async verifySigTransactionAuth(senderAccount, transaction, signatureCheck) {
@@ -1588,14 +1585,11 @@ module.exports = class LDPoSChainModule {
   }
 
   async verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, fullCheck) {
-    let txnTotal = this.verifyAccountMeetsRequirements(senderAccount, transaction);
-
     if (fullCheck) {
       this.verifyMultisigTransactionOffersMinFee(transaction, multisigMemberAccounts);
       await this.verifyTransactionDoesNotAlreadyExist(transaction);
     }
-
-    return txnTotal;
+    return this.verifyAccountMeetsRequirements(senderAccount, transaction);
   }
 
   async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck) {
