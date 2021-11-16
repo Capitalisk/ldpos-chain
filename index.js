@@ -39,6 +39,7 @@ const DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO = .6;
 const DEFAULT_FORGING_INTERVAL = 30000;
 const DEFAULT_FETCH_BLOCK_LIMIT = 10;
 const DEFAULT_FETCH_BLOCK_PAUSE = 500;
+const DEFAULT_BLOCK_PROCESSING_FAILURE_PAUSE = 20000;
 const DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS = 10;
 const DEFAULT_FORGING_BLOCK_BROADCAST_DELAY = 2000;
 const DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY = 8000;
@@ -587,6 +588,7 @@ module.exports = class LDPoSChainModule {
       fetchBlockEndConfirmations,
       fetchBlockLimit,
       fetchBlockPause,
+      blockProcessingFailurePause,
       blockSignerMajorityCount,
       maxConsecutiveBlockFetchFailures
     } = options;
@@ -743,6 +745,8 @@ module.exports = class LDPoSChainModule {
         break;
       }
 
+      let pause = fetchBlockPause;
+
       for (let block of newBlocks) {
         let blockHeight = this.lastProcessedBlock.height + 1;
         let requiredBlockSignatureCount = Math.min(
@@ -767,7 +771,12 @@ module.exports = class LDPoSChainModule {
           if (!blockSignificant) {
             throw new Error(`Block ${block.id} was not significant; it should not be part of the chain`);
           }
-          await this.processBlock(block, senderAccountDetails, true);
+          try {
+            await this.processBlock(block, senderAccountDetails, true);
+          } catch (error) {
+            pause = blockProcessingFailurePause;
+            throw error;
+          }
           this.lastHandledBlock = this.lastProcessedBlock;
           addedBlockCount++;
         } catch (error) {
@@ -782,7 +791,7 @@ module.exports = class LDPoSChainModule {
         }
       }
 
-      await this.wait(fetchBlockPause);
+      await this.wait(pause);
     }
 
     this.isCatchingUp = false;
@@ -2067,6 +2076,7 @@ module.exports = class LDPoSChainModule {
       forgerCount,
       fetchBlockLimit,
       fetchBlockPause,
+      blockProcessingFailurePause,
       fetchBlockEndConfirmations,
       propagationTimeout,
       timePollInterval,
@@ -2087,6 +2097,7 @@ module.exports = class LDPoSChainModule {
           forgingInterval,
           fetchBlockLimit,
           fetchBlockPause,
+          blockProcessingFailurePause,
           fetchBlockEndConfirmations,
           blockSignerMajorityCount,
           maxConsecutiveBlockFetchFailures
@@ -3249,6 +3260,7 @@ module.exports = class LDPoSChainModule {
       minForgerBlockSignatureRatio: DEFAULT_MIN_FORGER_BLOCK_SIGNATURE_RATIO,
       fetchBlockLimit: DEFAULT_FETCH_BLOCK_LIMIT,
       fetchBlockPause: DEFAULT_FETCH_BLOCK_PAUSE,
+      blockProcessingFailurePause: DEFAULT_BLOCK_PROCESSING_FAILURE_PAUSE,
       fetchBlockEndConfirmations: DEFAULT_FETCH_BLOCK_END_CONFIRMATIONS,
       forgingBlockBroadcastDelay: DEFAULT_FORGING_BLOCK_BROADCAST_DELAY,
       forgingSignatureBroadcastDelay: DEFAULT_FORGING_SIGNATURE_BROADCAST_DELAY,
