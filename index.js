@@ -1313,6 +1313,60 @@ module.exports = class LDPoSChainModule {
       }
     }
 
+    await Promise.all(
+      affectedAddressList.map(async (affectedAddress) => {
+        let accountStream = this.pendingTransactionStreams[affectedAddress];
+        if (accountStream) {
+          // If there is a pending transaction queue for this account, update the
+          // in-memory account to have the latest public keys.
+          let accountInfo = affectedAccountDetails[affectedAddress];
+          let accountChanges = accountInfo.changes || {};
+          let pendingSenderAccount;
+          try {
+            let senderInfo = await accountStream.senderInfoPromise;
+            pendingSenderAccount = senderInfo.senderAccount;
+          } catch (error) {
+            this.logger.debug(
+              `Failed to update public keys of account ${
+                affectedAddress
+              } in pending queue because of error: ${
+                error.message
+              }`
+            );
+            return;
+          }
+
+          if (accountChanges.sigPublicKey) {
+            pendingSenderAccount.sigPublicKey = accountChanges.sigPublicKey;
+          }
+          if (accountChanges.nextSigPublicKey) {
+            pendingSenderAccount.nextSigPublicKey = accountChanges.nextSigPublicKey;
+          }
+          if (accountChanges.nextSigKeyIndex) {
+            pendingSenderAccount.nextSigKeyIndex = accountChanges.nextSigKeyIndex;
+          }
+          if (accountChanges.multisigPublicKey) {
+            pendingSenderAccount.multisigPublicKey = accountChanges.multisigPublicKey;
+          }
+          if (accountChanges.nextMultisigPublicKey) {
+            pendingSenderAccount.nextMultisigPublicKey = accountChanges.nextMultisigPublicKey;
+          }
+          if (accountChanges.nextMultisigKeyIndex) {
+            pendingSenderAccount.nextMultisigKeyIndex = accountChanges.nextMultisigKeyIndex;
+          }
+          if (accountChanges.forgingPublicKey) {
+            pendingSenderAccount.forgingPublicKey = accountChanges.forgingPublicKey;
+          }
+          if (accountChanges.nextForgingPublicKey) {
+            pendingSenderAccount.nextForgingPublicKey = accountChanges.nextForgingPublicKey;
+          }
+          if (accountChanges.nextForgingKeyIndex) {
+            pendingSenderAccount.nextForgingKeyIndex = accountChanges.nextForgingKeyIndex;
+          }
+        }
+      })
+    );
+
     await this.fetchTopActiveDelegates();
 
     this.publishToChannel(`${this.alias}:chainChanges`, {
@@ -1521,48 +1575,6 @@ module.exports = class LDPoSChainModule {
         );
       }
     }
-  }
-
-  async verifyRegisterMultisigWalletTransaction(transaction) {
-    let { memberAddresses } = transaction;
-    await Promise.all(
-      memberAddresses.map(
-        async (memberAddress) => {
-          let memberAccount;
-          try {
-            memberAccount = await this.getSanitizedAccount(memberAddress);
-          } catch (error) {
-            if (error.name === 'AccountDidNotExistError') {
-              throw new Error(
-                `Account ${
-                  memberAddress
-                } did not exist so it could not be a member of a multisig wallet`
-              );
-            } else {
-              throw new Error(
-                `Failed to fetch account ${
-                  memberAddress
-                } to verify that it qualified to be a member of a multisig wallet`
-              );
-            }
-          }
-          if (!memberAccount.multisigPublicKey) {
-            throw new Error(
-              `Account ${
-                memberAddress
-              } has not been registered for multisig so it could not be a member of a multisig wallet`
-            );
-          }
-          if (memberAccount.type === 'multisig') {
-            throw new Error(
-              `Account ${
-                memberAddress
-              } was a multisig wallet so it could not be a member of another multisig wallet`
-            );
-          }
-        }
-      )
-    );
   }
 
   verifyAccountMeetsRequirements(senderAccount, transaction) {
@@ -2603,10 +2615,10 @@ module.exports = class LDPoSChainModule {
     let accountStream = new WritableConsumableStream();
     accountStream.transactionInfoMap = new Map();
     accountStream.pendingTransactionVerificationCount = 1;
-    this.pendingTransactionStreams[senderAddress] = accountStream;
-
     let accountStreamConsumer = accountStream.createConsumer();
     accountStream.senderInfoPromise = this.getTransactionSenderAccountDetails(senderAddress);
+
+    this.pendingTransactionStreams[senderAddress] = accountStream;
 
     try {
       let senderInfo = await accountStream.senderInfoPromise;
