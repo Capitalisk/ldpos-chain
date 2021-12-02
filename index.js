@@ -1316,53 +1316,54 @@ module.exports = class LDPoSChainModule {
     await Promise.all(
       affectedAddressList.map(async (affectedAddress) => {
         let accountStream = this.pendingTransactionStreams[affectedAddress];
-        if (accountStream) {
-          // If there is a pending transaction queue for this account, update the
-          // in-memory account to have the latest public keys.
-          let accountInfo = affectedAccountDetails[affectedAddress];
-          let accountChanges = accountInfo.changes || {};
-          let pendingSenderAccount;
-          try {
-            let senderInfo = await accountStream.senderInfoPromise;
-            pendingSenderAccount = senderInfo.senderAccount;
-          } catch (error) {
-            this.logger.debug(
-              `Failed to update public keys of account ${
-                affectedAddress
-              } in pending queue because of error: ${
-                error.message
-              }`
-            );
-            return;
-          }
+        if (!accountStream) {
+          return;
+        }
+        // If there is a pending transaction queue for this account, update the
+        // in-memory account to have the latest public keys.
+        let accountInfo = affectedAccountDetails[affectedAddress];
+        let accountChanges = accountInfo.changes || {};
+        let pendingSenderAccount;
+        try {
+          let senderInfo = await accountStream.senderInfoPromise;
+          pendingSenderAccount = senderInfo.senderAccount;
+        } catch (error) {
+          this.logger.debug(
+            `Failed to update public keys of account ${
+              affectedAddress
+            } in pending queue because of error: ${
+              error.message
+            }`
+          );
+          return;
+        }
 
-          if (accountChanges.sigPublicKey) {
-            pendingSenderAccount.sigPublicKey = accountChanges.sigPublicKey;
-          }
-          if (accountChanges.nextSigPublicKey) {
-            pendingSenderAccount.nextSigPublicKey = accountChanges.nextSigPublicKey;
-          }
-          if (accountChanges.nextSigKeyIndex) {
-            pendingSenderAccount.nextSigKeyIndex = accountChanges.nextSigKeyIndex;
-          }
-          if (accountChanges.multisigPublicKey) {
-            pendingSenderAccount.multisigPublicKey = accountChanges.multisigPublicKey;
-          }
-          if (accountChanges.nextMultisigPublicKey) {
-            pendingSenderAccount.nextMultisigPublicKey = accountChanges.nextMultisigPublicKey;
-          }
-          if (accountChanges.nextMultisigKeyIndex) {
-            pendingSenderAccount.nextMultisigKeyIndex = accountChanges.nextMultisigKeyIndex;
-          }
-          if (accountChanges.forgingPublicKey) {
-            pendingSenderAccount.forgingPublicKey = accountChanges.forgingPublicKey;
-          }
-          if (accountChanges.nextForgingPublicKey) {
-            pendingSenderAccount.nextForgingPublicKey = accountChanges.nextForgingPublicKey;
-          }
-          if (accountChanges.nextForgingKeyIndex) {
-            pendingSenderAccount.nextForgingKeyIndex = accountChanges.nextForgingKeyIndex;
-          }
+        if (accountChanges.sigPublicKey) {
+          pendingSenderAccount.sigPublicKey = accountChanges.sigPublicKey;
+        }
+        if (accountChanges.nextSigPublicKey) {
+          pendingSenderAccount.nextSigPublicKey = accountChanges.nextSigPublicKey;
+        }
+        if (accountChanges.nextSigKeyIndex) {
+          pendingSenderAccount.nextSigKeyIndex = accountChanges.nextSigKeyIndex;
+        }
+        if (accountChanges.multisigPublicKey) {
+          pendingSenderAccount.multisigPublicKey = accountChanges.multisigPublicKey;
+        }
+        if (accountChanges.nextMultisigPublicKey) {
+          pendingSenderAccount.nextMultisigPublicKey = accountChanges.nextMultisigPublicKey;
+        }
+        if (accountChanges.nextMultisigKeyIndex) {
+          pendingSenderAccount.nextMultisigKeyIndex = accountChanges.nextMultisigKeyIndex;
+        }
+        if (accountChanges.forgingPublicKey) {
+          pendingSenderAccount.forgingPublicKey = accountChanges.forgingPublicKey;
+        }
+        if (accountChanges.nextForgingPublicKey) {
+          pendingSenderAccount.nextForgingPublicKey = accountChanges.nextForgingPublicKey;
+        }
+        if (accountChanges.nextForgingKeyIndex) {
+          pendingSenderAccount.nextForgingKeyIndex = accountChanges.nextForgingKeyIndex;
         }
       })
     );
@@ -1515,17 +1516,19 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck) {
-    let { senderAddress } = transaction;
+  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, processSignatures) {
     validateMultisigTransactionSchema(
       transaction,
       senderAccount.requiredSignatureCount,
       this.maxMultisigMembers,
       this.networkSymbol,
-      signatureCheck
+      processSignatures
     );
 
-    if (signatureCheck) {
+    if (processSignatures) {
+      let invalidPublicKeyMembers = [];
+      let invalidSignatureMembers = [];
+      let validSignaturePackets = [];
       for (let signaturePacket of transaction.signatures) {
         let {
           signerAddress,
@@ -1554,20 +1557,42 @@ module.exports = class LDPoSChainModule {
           multisigPublicKey !== memberAccount.multisigPublicKey &&
           multisigPublicKey !== memberAccount.nextMultisigPublicKey
         ) {
-          throw new Error(
-            `Multisig transaction signature multisigPublicKey did not match the multisigPublicKey or nextMultisigPublicKey of the member account ${
+          invalidPublicKeyMembers.push(memberAccount.address);
+          this.logger.debug(
+            `The multisigPublicKey of member ${
               memberAccount.address
-            }`
+            } on multisig transaction ${
+              transaction.id
+            } was invalid or expired`
           );
-        }
-        if (!this.ldposClient.verifyMultisigTransactionSignature(transaction, signaturePacket)) {
-          throw new Error(
-            `Multisig transaction signature of member ${
-              memberAccount.address
-            } was invalid`
-          );
+        } else if (!this.ldposClient.verifyMultisigTransactionSignature(transaction, signaturePacket)) {
+          invalidSignatureMembers.push(memberAccount.address);
+        } else {
+          validSignaturePackets.push(signaturePacket);
         }
       }
+      if (invalidSignatureMembers.length) {
+        throw new Error(
+          `Multisig transaction contained invalid signatures from members: ${
+            invalidSignatureMembers.join(', ')
+          }`
+        );
+      }
+      if (validSignaturePackets.length < senderAccount.requiredSignatureCount) {
+        // This will only throw if there are not enough valid signatures on the transaction.
+        // Some invalid member public keys may be tolerated because, due to the stateful nature
+        // of the signature scheme, multisig public keys of members could change while a
+        // multisig transaction which they signed is awaiting processing.
+        // One member should not be able to prevent an otherwise valid multisig transaction from
+        // being processed by changing their multisig public key.
+        throw new Error(
+          `Multisig transaction did not have enough valid signatures - Members with invalid or expired public keys: ${
+            invalidPublicKeyMembers.join(', ')
+          }`
+        );
+      }
+      // Sanitize the signatures array to exclude signatures of members which had invalid multisig public keys.
+      transaction.signatures = validSignaturePackets;
     } else {
       if (!this.ldposClient.verifyTransactionId(transaction)) {
         throw new Error(
@@ -1937,7 +1962,7 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  sortPendingTransactions(transactions) {
+  getSortedPendingTransactions(transactions, senderAccountDetails) {
     // This sorting algorithm groups transactions based on the sender address and
     // sorts based on the average fee. This is necessary because the signature algorithm is
     // stateful so the algorithm should give priority to older transactions which
@@ -1945,7 +1970,11 @@ module.exports = class LDPoSChainModule {
     let transactionGroupMap = {};
     for (let txn of transactions) {
       if (!transactionGroupMap[txn.senderAddress]) {
-        transactionGroupMap[txn.senderAddress] = { transactions: [], totalFees: 0 };
+        transactionGroupMap[txn.senderAddress] = {
+          senderAddress: txn.senderAddress,
+          transactions: [],
+          totalFees: 0
+        };
       }
       let transactionGroup = transactionGroupMap[txn.senderAddress];
       if (!transactionGroup.type) {
@@ -1956,19 +1985,38 @@ module.exports = class LDPoSChainModule {
     }
     let transactionGroupList = Object.values(transactionGroupMap);
     for (let transactionGroup of transactionGroupList) {
-      // Within each group, sort transactions based on key indexes.
       if (transactionGroup.type === ACCOUNT_TYPE_SIG) {
+        // For regular sig transactions, sort based on public key.
+        // If public keys are the same, sort based on key index.
+        let { senderAccount } = senderAccountDetails[transactionGroup.senderAddress];
         transactionGroup.transactions.sort((a, b) => {
-          if (a.nextSigKeyIndex < b.nextSigKeyIndex) {
+          if (a.sigPublicKey === b.sigPublicKey) {
+            if (a.nextSigKeyIndex < b.nextSigKeyIndex) {
+              return -1;
+            }
+            if (a.nextSigKeyIndex > b.nextSigKeyIndex) {
+              return 1;
+            }
+            return 0;
+          }
+          if (a.sigPublicKey === senderAccount.sigPublicKey) {
             return -1;
           }
-          if (a.nextSigKeyIndex > b.nextSigKeyIndex) {
+          if (b.sigPublicKey === senderAccount.sigPublicKey) {
+            return 1;
+          }
+          if (a.sigPublicKey === senderAccount.nextSigPublicKey) {
+            return -1;
+          }
+          if (b.sigPublicKey === senderAccount.nextSigPublicKey) {
             return 1;
           }
           return 0;
         });
       } else {
-        // For multisig accounts, sort based on the average key index change from the minimum for each signing member.
+        // For multisig transactions, sort based on the average priority value of public keys of signers.
+        // If the priority is the same, sort based on the average key index delta of signers.
+        let { multisigMemberAccounts } = senderAccountDetails[transactionGroup.senderAddress];
         let memberMinKeyIndexes = {};
         for (let txn of transactionGroup.transactions) {
           for (let signaturePacket of txn.signatures) {
@@ -1981,20 +2029,50 @@ module.exports = class LDPoSChainModule {
           }
         }
         transactionGroup.transactions.sort((a, b) => {
+          let totalPublicKeyPriorityA = 0;
           let totalKeyIndexDeltaA = 0;
           for (let signaturePacket of a.signatures) {
+            let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+            let publicKeyPriority;
+            if (signaturePacket.multisigPublicKey === signerAccount.multisigPublicKey) {
+              publicKeyPriority = 0;
+            } else if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+              publicKeyPriority = 1;
+            } else {
+              publicKeyPriority = 2;
+            }
+            totalPublicKeyPriorityA += publicKeyPriority;
             let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
             totalKeyIndexDeltaA += keyIndexDelta;
           }
+          let averagePublicKeyPriorityA = totalPublicKeyPriorityA / a.signatures.length;
           let averageKeyIndexDeltaA = totalKeyIndexDeltaA / a.signatures.length;
 
+          let totalPublicKeyPriorityB = 0;
           let totalKeyIndexDeltaB = 0;
           for (let signaturePacket of b.signatures) {
+            let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+            let publicKeyPriority;
+            if (signaturePacket.multisigPublicKey === signerAccount.multisigPublicKey) {
+              publicKeyPriority = 0;
+            } else if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+              publicKeyPriority = 1;
+            } else {
+              publicKeyPriority = 2;
+            }
+            totalPublicKeyPriorityB += publicKeyPriority;
             let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
             totalKeyIndexDeltaB += keyIndexDelta;
           }
+          let averagePublicKeyPriorityB = totalPublicKeyPriorityB / b.signatures.length;
           let averageKeyIndexDeltaB = totalKeyIndexDeltaB / b.signatures.length;
 
+          if (averagePublicKeyPriorityA < averagePublicKeyPriorityB) {
+            return -1;
+          }
+          if (averagePublicKeyPriorityA > averagePublicKeyPriorityB) {
+            return 1;
+          }
           if (averageKeyIndexDeltaA < averageKeyIndexDeltaB) {
             return -1;
           }
@@ -2238,7 +2316,7 @@ module.exports = class LDPoSChainModule {
             };
           }
 
-          let pendingTransactions = this.sortPendingTransactions(validTransactions);
+          let pendingTransactions = this.getSortedPendingTransactions(validTransactions, senderAccountDetails);
           let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
           let [ forgedBlock, forgerAccount ] = await Promise.all([
             this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
@@ -2667,59 +2745,6 @@ module.exports = class LDPoSChainModule {
             senderAccount.balance -= txnTotal;
 
             if (multisigMemberAccounts) {
-              // Check that the multisig transaction is valid with respect to existing pending transactions so that it does
-              // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
-              // due to the stateful nature of the signature scheme.
-              for (let txnSignature of currentTxn.signatures) {
-                let { signerAddress, multisigPublicKey, nextMultisigKeyIndex } = txnSignature;
-                let memberAccount = multisigMemberAccounts[signerAddress];
-
-                if (multisigPublicKey === memberAccount.nextMultisigPublicKey) {
-                  // If the transaction was signed with the next public key.
-                  if (
-                    memberAccount.highestMultisigPublicKeyIndex != null &&
-                    nextMultisigKeyIndex <= memberAccount.highestMultisigPublicKeyIndex
-                  ) {
-                    throw new Error(
-                      `Multisig transaction ${
-                        currentTxn.id
-                      } nextMultisigKeyIndex ${
-                        nextMultisigKeyIndex
-                      } of member ${
-                        signerAddress
-                      } was too low relative to the nextMultisigKeyIndex of other pending transactions`
-                    );
-                  }
-                  if (
-                    memberAccount.lowestNextMultisigPublicKeyIndex == null ||
-                    nextMultisigKeyIndex < memberAccount.lowestNextMultisigPublicKeyIndex
-                  ) {
-                    memberAccount.lowestNextMultisigPublicKeyIndex = nextMultisigKeyIndex;
-                  }
-                } else {
-                  // If the transaction was signed with the current public key.
-                  if (
-                    memberAccount.lowestNextMultisigPublicKeyIndex != null &&
-                    nextMultisigKeyIndex >= memberAccount.lowestNextMultisigPublicKeyIndex
-                  ) {
-                    throw new Error(
-                      `Multisig transaction ${
-                        currentTxn.id
-                      } nextMultisigKeyIndex ${
-                        nextMultisigKeyIndex
-                      } of member ${
-                        signerAddress
-                      } was too high relative to the nextMultisigKeyIndex of other pending transactions`
-                    );
-                  }
-                  if (
-                    memberAccount.highestMultisigPublicKeyIndex == null ||
-                    nextMultisigKeyIndex > memberAccount.highestMultisigPublicKeyIndex
-                  ) {
-                    memberAccount.highestMultisigPublicKeyIndex = nextMultisigKeyIndex;
-                  }
-                }
-              }
               this.trackPendingMultisigTransactionSigners(currentTxn);
             } else {
               // Do not allow an account to change their multisig public key while there are pending multisig transactions in the queue
@@ -2746,51 +2771,6 @@ module.exports = class LDPoSChainModule {
                     currentTxn.senderAddress
                   } could not be processed while there were pending transactions from that account`
                 );
-              }
-
-              // Check that the sig transaction is valid with respect to existing pending transactions so that it does
-              // not cause an illegal ordering of pending transactions as this would cause some pending transactions to become invalid
-              // due to the stateful nature of the signature scheme.
-              if (currentTxn.sigPublicKey === senderAccount.nextSigPublicKey) {
-                // If the transaction was signed with the next public key.
-                if (
-                  senderAccount.highestSigPublicKeyIndex != null &&
-                  currentTxn.nextSigKeyIndex <= senderAccount.highestSigPublicKeyIndex
-                ) {
-                  throw new Error(
-                    `Transaction ${
-                      currentTxn.id
-                    } nextSigKeyIndex ${
-                      currentTxn.nextSigKeyIndex
-                    } was too low relative to the nextSigKeyIndex of other pending transactions`
-                  );
-                }
-                if (
-                  senderAccount.lowestNextSigPublicKeyIndex == null ||
-                  currentTxn.nextSigKeyIndex < senderAccount.lowestNextSigPublicKeyIndex
-                ) {
-                  senderAccount.lowestNextSigPublicKeyIndex = currentTxn.nextSigKeyIndex;
-                }
-              } else {
-                // If the transaction was signed with the current public key.
-                if (
-                  senderAccount.lowestNextSigPublicKeyIndex != null &&
-                  currentTxn.nextSigKeyIndex >= senderAccount.lowestNextSigPublicKeyIndex
-                ) {
-                  throw new Error(
-                    `Transaction ${
-                      currentTxn.id
-                    } nextSigKeyIndex ${
-                      currentTxn.nextSigKeyIndex
-                    } was too high relative to the nextSigKeyIndex of other pending transactions`
-                  );
-                }
-                if (
-                  senderAccount.highestSigPublicKeyIndex == null ||
-                  currentTxn.nextSigKeyIndex > senderAccount.highestSigPublicKeyIndex
-                ) {
-                  senderAccount.highestSigPublicKeyIndex = currentTxn.nextSigKeyIndex;
-                }
               }
             }
 
