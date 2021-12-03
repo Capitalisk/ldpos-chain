@@ -136,6 +136,8 @@ module.exports = class LDPoSChainModule {
     this.lastReceivedBlock = this.lastProcessedBlock;
     this.lastReceivedSignerAddressSet = new Set();
     this.ldposForgingClients = {};
+    this.supplantedAddressSigPublicKeySet = new Set();
+    this.supplantedAddressMultisigPublicKeySet = new Set();
 
     this.verifiedBlockInfoStream = new WritableConsumableStream();
 
@@ -1473,8 +1475,8 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck) {
-    validateSigTransactionSchema(transaction, signatureCheck);
+  verifySigTransactionAuthentication(senderAccount, transaction, processSignatures, rejectSupplantedPublicKey) {
+    validateSigTransactionSchema(transaction, processSignatures);
 
     if (senderAccount.sigPublicKey) {
       if (
@@ -1502,7 +1504,15 @@ module.exports = class LDPoSChainModule {
       }
     }
 
-    if (signatureCheck) {
+    if (rejectSupplantedPublicKey && this.supplantedAddressSigPublicKeySet.has(`${senderAccount.address},${transaction.sigPublicKey}`)) {
+      throw new Error(
+        `Transaction sigPublicKey of the sender account ${
+          senderAccount.address
+        } has been supplanted`
+      );
+    }
+
+    if (processSignatures) {
       // Check that the transaction signature corresponds to the public key.
       if (!this.ldposClient.verifyTransaction(transaction)) {
         throw new Error('Transaction senderSignature was invalid');
@@ -1516,7 +1526,7 @@ module.exports = class LDPoSChainModule {
     }
   }
 
-  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, processSignatures) {
+  verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, processSignatures, rejectSupplantedPublicKey) {
     validateMultisigTransactionSchema(
       transaction,
       senderAccount.requiredSignatureCount,
@@ -1553,17 +1563,29 @@ module.exports = class LDPoSChainModule {
             } was not registered for multisig so they cannot sign multisig transactions`
           );
         }
-        if (
-          multisigPublicKey !== memberAccount.multisigPublicKey &&
-          multisigPublicKey !== memberAccount.nextMultisigPublicKey
-        ) {
+        let isPublicKeyValid;
+        if (rejectSupplantedPublicKey) {
+          isPublicKeyValid = (
+            (
+              multisigPublicKey === memberAccount.multisigPublicKey ||
+              multisigPublicKey === memberAccount.nextMultisigPublicKey
+            ) &&
+            !this.supplantedAddressMultisigPublicKeySet.has(`${memberAccount.address},${multisigPublicKey}`)
+          );
+        } else {
+          isPublicKeyValid = (
+            multisigPublicKey === memberAccount.multisigPublicKey ||
+            multisigPublicKey === memberAccount.nextMultisigPublicKey
+          );
+        }
+        if (!isPublicKeyValid) {
           invalidPublicKeyMembers.push(memberAccount.address);
           this.logger.debug(
             `The multisigPublicKey of member ${
               memberAccount.address
             } on multisig transaction ${
               transaction.id
-            } was invalid or expired`
+            } was invalid or supplanted`
           );
         } else if (!this.ldposClient.verifyMultisigTransactionSignature(transaction, signaturePacket)) {
           invalidSignatureMembers.push(memberAccount.address);
@@ -1586,7 +1608,7 @@ module.exports = class LDPoSChainModule {
         // One member should not be able to prevent an otherwise valid multisig transaction from
         // being processed by changing their multisig public key.
         throw new Error(
-          `Multisig transaction did not have enough valid signatures - Members with invalid or expired public keys: ${
+          `Multisig transaction did not have enough valid signatures - Members with invalid or supplanted public keys: ${
             invalidPublicKeyMembers.join(', ')
           }`
         );
@@ -1625,8 +1647,8 @@ module.exports = class LDPoSChainModule {
     return this.verifyAccountMeetsRequirements(senderAccount, transaction);
   }
 
-  async verifySigTransactionAuth(senderAccount, transaction, signatureCheck) {
-    this.verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck);
+  async verifySigTransactionAuth(senderAccount, transaction, signatureCheck, rejectSupplantedPublicKey) {
+    this.verifySigTransactionAuthentication(senderAccount, transaction, signatureCheck, rejectSupplantedPublicKey);
     return this.verifySigTransactionAuthorization(senderAccount, transaction, signatureCheck);
   }
 
@@ -1638,8 +1660,8 @@ module.exports = class LDPoSChainModule {
     return this.verifyAccountMeetsRequirements(senderAccount, transaction);
   }
 
-  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck) {
-    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck);
+  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck, rejectSupplantedPublicKey) {
+    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck, rejectSupplantedPublicKey);
     return this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, signatureCheck);
   }
 
@@ -1799,9 +1821,9 @@ module.exports = class LDPoSChainModule {
           try {
             let txnTotal;
             if (multisigMemberAccounts) {
-              txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, senderTxn, false);
+              txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, senderTxn, false, false);
             } else {
-              txnTotal = await this.verifySigTransactionAuth(senderAccount, senderTxn, false);
+              txnTotal = await this.verifySigTransactionAuth(senderAccount, senderTxn, false, false);
             }
 
             // Subtract valid transaction total from the in-memory senderAccount balance since it
@@ -2025,7 +2047,7 @@ module.exports = class LDPoSChainModule {
               signaturePacket.nextMultisigKeyIndex < memberMinKeyIndexes[signaturePacket.signerAddress]
             ) {
               memberMinKeyIndexes[signaturePacket.signerAddress] = signaturePacket.nextMultisigKeyIndex;
-            };
+            }
           }
         }
         transactionGroup.transactions.sort((a, b) => {
@@ -2237,85 +2259,105 @@ module.exports = class LDPoSChainModule {
         let blockTimestamp = this.getCurrentBlockTimeSlot(forgingInterval);
         let currentForgingDelegateAddress = this.getForgingDelegateAddressAtTimestamp(blockTimestamp);
         let block;
-        let senderAccountDetails;
 
-        if (this.ldposForgingClients[currentForgingDelegateAddress]) {
-          let validTransactions = [];
-          let senderAddressList = Object.keys(this.pendingTransactionStreams);
+        let validTransactions = [];
+        let senderAddressList = Object.keys(this.pendingTransactionStreams);
 
-          let senderAccountDetailsResultList = await Promise.all(
-            senderAddressList.map(async (senderAddress) => {
-              let senderAccountInfo;
-              let senderAccount;
-              let multisigMemberAccounts;
+        let senderAccountDetailsResultList = await Promise.all(
+          senderAddressList.map(async (senderAddress) => {
+            let senderAccountInfo;
+            let senderAccount;
+            let multisigMemberAccounts;
+            try {
+              let result = await this.getTransactionSenderAccountDetails(senderAddress);
+              senderAccount = result.senderAccount;
+              multisigMemberAccounts = result.multisigMemberAccounts;
+              senderAccountInfo = {
+                senderAccount: {
+                  ...senderAccount
+                },
+                multisigMemberAccounts: {
+                  ...multisigMemberAccounts
+                }
+              };
+            } catch (err) {
+              let error = new Error(
+                `Failed to fetch sender account ${
+                  senderAddress
+                } for transaction verification because of error: ${
+                  err.message
+                }`
+              );
+              this.logger.error(error);
+              return null;
+            }
+
+            let senderTxnStream = this.pendingTransactionStreams[senderAddress];
+            if (!senderTxnStream) {
+              return null;
+            }
+            let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
+            let pendingTxnList = [...pendingTxnInfoMap.values()].map(txnPacket => txnPacket.transaction);
+
+            for (let pendingTxn of pendingTxnList) {
               try {
-                let result = await this.getTransactionSenderAccountDetails(senderAddress);
-                senderAccount = result.senderAccount;
-                multisigMemberAccounts = result.multisigMemberAccounts;
-                senderAccountInfo = {
-                  senderAccount: {
-                    ...senderAccount
-                  },
-                  multisigMemberAccounts: {
-                    ...multisigMemberAccounts
-                  }
-                };
-              } catch (err) {
-                let error = new Error(
-                  `Failed to fetch sender account ${
-                    senderAddress
-                  } for transaction verification as part of block forging because of error: ${
-                    err.message
+                let txnTotal;
+                if (multisigMemberAccounts) {
+                  txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true, false);
+                } else {
+                  txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true, false);
+                }
+
+                // Subtract valid transaction total from the in-memory senderAccount balance since it
+                // may affect the verification of the next transaction in the stream.
+                senderAccount.balance -= txnTotal;
+                validTransactions.push(pendingTxn);
+              } catch (error) {
+                this.logger.debug(
+                  `Removed pending transaction ${
+                    pendingTxn.id
+                  } because of error: ${
+                    error.message
                   }`
                 );
-                this.logger.error(error);
-                return null;
+                this.untrackPendingTransaction(pendingTxn);
               }
+            }
+            return senderAccountInfo;
+          })
+        );
 
-              let senderTxnStream = this.pendingTransactionStreams[senderAddress];
-              if (!senderTxnStream) {
-                return null;
+        let senderAccountDetailsList = senderAccountDetailsResultList.filter(senderDetails => senderDetails);
+        let senderAccountDetails = {};
+        for (let { senderAccount, multisigMemberAccounts } of senderAccountDetailsList) {
+          senderAccountDetails[senderAccount.address] = {
+            senderAccount,
+            multisigMemberAccounts
+          };
+        }
+
+        this.supplantedAddressSigPublicKeySet.clear();
+        this.supplantedAddressMultisigPublicKeySet.clear();
+
+        // At around the time that a block is forged, keep track of all public keys which have been supplanted.
+        // Any new received transactions which are signed using the previous public key will be rejected after this point in time.
+        // This prevents users from spamming the pending queue with transactions whose keys are about to be supplanted as part of the
+        // upcoming block.
+        for (let transaction of validTransactions) {
+          let { senderAccount, multisigMemberAccounts } = senderAccountDetails[transaction.senderAddress];
+          if (senderAccount.type === ACCOUNT_TYPE_MULTISIG) {
+            for (let signaturePacket of transaction.signatures) {
+              let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+              if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+                this.supplantedAddressMultisigPublicKeySet.add(`${signerAccount.address},${signerAccount.multisigPublicKey}`);
               }
-              let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
-              let pendingTxnList = [...pendingTxnInfoMap.values()].map(txnPacket => txnPacket.transaction);
-
-              for (let pendingTxn of pendingTxnList) {
-                try {
-                  let txnTotal;
-                  if (multisigMemberAccounts) {
-                    txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true);
-                  } else {
-                    txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true);
-                  }
-
-                  // Subtract valid transaction total from the in-memory senderAccount balance since it
-                  // may affect the verification of the next transaction in the stream.
-                  senderAccount.balance -= txnTotal;
-                  validTransactions.push(pendingTxn);
-                } catch (error) {
-                  this.logger.debug(
-                    `Excluded transaction ${
-                      pendingTxn.id
-                    } from block because of error: ${
-                      error.message
-                    }`
-                  );
-                  this.untrackPendingTransaction(pendingTxn);
-                }
-              }
-              return senderAccountInfo;
-            })
-          );
-
-          let senderAccountDetailsList = senderAccountDetailsResultList.filter(senderAccountDetails => senderAccountDetails);
-          senderAccountDetails = {};
-          for (let { senderAccount, multisigMemberAccounts } of senderAccountDetailsList) {
-            senderAccountDetails[senderAccount.address] = {
-              senderAccount,
-              multisigMemberAccounts
-            };
+            }
+          } else if (transaction.sigPublicKey === senderAccount.nextSigPublicKey) {
+            this.supplantedAddressSigPublicKeySet.add(`${senderAccount.address},${senderAccount.sigPublicKey}`);
           }
+        }
 
+        if (this.ldposForgingClients[currentForgingDelegateAddress]) {
           let pendingTransactions = this.getSortedPendingTransactions(validTransactions, senderAccountDetails);
           let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
           let [ forgedBlock, forgerAccount ] = await Promise.all([
@@ -2487,7 +2529,7 @@ module.exports = class LDPoSChainModule {
 
   async postTransaction(transaction) {
     try {
-      await this.processReceivedTransaction(transaction, PROPAGATION_MODE_IMMEDIATE);
+      await this.processReceivedTransaction(transaction, true, PROPAGATION_MODE_IMMEDIATE);
     } catch (error) {
       let err = new Error(error.message);
       err.name = 'InvalidTransactionError';
@@ -2598,7 +2640,7 @@ module.exports = class LDPoSChainModule {
     return !!(accountStream.pendingTransactionVerificationCount || accountStream.transactionInfoMap.size);
   }
 
-  async processReceivedTransaction(transaction, propagationMode) {
+  async processReceivedTransaction(transaction, rejectSupplantedPublicKey, propagationMode) {
     try {
       validateTransactionSchema(
         transaction,
@@ -2668,9 +2710,9 @@ module.exports = class LDPoSChainModule {
         multisigMemberAccounts = senderInfo.multisigMemberAccounts;
 
         if (multisigMemberAccounts) {
-          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
+          this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, rejectSupplantedPublicKey);
         } else {
-          this.verifySigTransactionAuthentication(senderAccount, transaction, true);
+          this.verifySigTransactionAuthentication(senderAccount, transaction, true, rejectSupplantedPublicKey);
         }
         accountStream.write({
           transaction,
@@ -2704,9 +2746,9 @@ module.exports = class LDPoSChainModule {
       multisigMemberAccounts = senderInfo.multisigMemberAccounts;
 
       if (multisigMemberAccounts) {
-        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true);
+        this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, true, rejectSupplantedPublicKey);
       } else {
-        this.verifySigTransactionAuthentication(senderAccount, transaction, true);
+        this.verifySigTransactionAuthentication(senderAccount, transaction, true, rejectSupplantedPublicKey);
       }
       accountStream.write({
         transaction,
@@ -2811,7 +2853,7 @@ module.exports = class LDPoSChainModule {
       // Process transactions in parallel.
       (async () => {
         try {
-          await this.processReceivedTransaction(event.data, PROPAGATION_MODE_DELAYED);
+          await this.processReceivedTransaction(event.data, true, PROPAGATION_MODE_DELAYED);
         } catch (error) {
           this.logger.debug(error.message);
         }
@@ -2841,7 +2883,7 @@ module.exports = class LDPoSChainModule {
       );
       try {
         let transaction = await this.getSignedPendingTransaction(transactionId);
-        await this.processReceivedTransaction(transaction, PROPAGATION_MODE_NONE);
+        await this.processReceivedTransaction(transaction, false, PROPAGATION_MODE_NONE);
         return;
       } catch (error) {
         this.logger.debug(
