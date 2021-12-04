@@ -51,6 +51,7 @@ const DEFAULT_MIN_TRANSACTIONS_PER_BLOCK = 1;
 const DEFAULT_MAX_TRANSACTIONS_PER_BLOCK = 300;
 const DEFAULT_MIN_MULTISIG_MEMBERS = 1;
 const DEFAULT_MAX_MULTISIG_MEMBERS = 100;
+const DEFAULT_PENDING_TRANSACTION_SETTLEMENT_DELAY = 10000;
 const DEFAULT_PENDING_TRANSACTION_EXPIRY = 86400000; // 24 hours
 const DEFAULT_PENDING_TRANSACTION_EXPIRY_CHECK_INTERVAL = 3600000; // 1 hour
 const DEFAULT_MAX_SPENDABLE_DIGITS = 25;
@@ -2191,6 +2192,7 @@ module.exports = class LDPoSChainModule {
       blockProcessingFailurePause,
       fetchBlockEndConfirmations,
       propagationTimeout,
+      pendingTransactionSettlementDelay,
       timePollInterval,
       maxTransactionsPerBlock,
       minMultisigMembers,
@@ -2260,7 +2262,7 @@ module.exports = class LDPoSChainModule {
         let currentForgingDelegateAddress = this.getForgingDelegateAddressAtTimestamp(blockTimestamp);
         let block;
 
-        let validTransactions = [];
+        let readyTransactions = [];
         let senderAddressList = Object.keys(this.pendingTransactionStreams);
 
         let senderAccountDetailsResultList = await Promise.all(
@@ -2297,30 +2299,36 @@ module.exports = class LDPoSChainModule {
               return null;
             }
             let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
-            let pendingTxnList = [...pendingTxnInfoMap.values()].map(txnPacket => txnPacket.transaction);
 
-            for (let pendingTxn of pendingTxnList) {
+            for (let { transaction, receivedTimestamp } of pendingTxnInfoMap.values()) {
+              if (blockTimestamp - receivedTimestamp < pendingTransactionSettlementDelay) {
+                // If a transaction has been sitting in the queue for less than pendingTransactionSettlementDelay,
+                // do not include it in the current block; this is to ensure that there is enough time for any
+                // contending transactions (I.e. signed using an older public key) to propagate through
+                // the network and be received by this node and processed in the correct order.
+                continue;
+              }
               try {
                 let txnTotal;
                 if (multisigMemberAccounts) {
-                  txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, pendingTxn, true, false);
+                  txnTotal = await this.verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, true, false);
                 } else {
-                  txnTotal = await this.verifySigTransactionAuth(senderAccount, pendingTxn, true, false);
+                  txnTotal = await this.verifySigTransactionAuth(senderAccount, transaction, true, false);
                 }
 
                 // Subtract valid transaction total from the in-memory senderAccount balance since it
                 // may affect the verification of the next transaction in the stream.
                 senderAccount.balance -= txnTotal;
-                validTransactions.push(pendingTxn);
+                readyTransactions.push(transaction);
               } catch (error) {
                 this.logger.debug(
                   `Removed pending transaction ${
-                    pendingTxn.id
+                    transaction.id
                   } because of error: ${
                     error.message
                   }`
                 );
-                this.untrackPendingTransaction(pendingTxn);
+                this.untrackPendingTransaction(transaction);
               }
             }
             return senderAccountInfo;
@@ -2343,7 +2351,7 @@ module.exports = class LDPoSChainModule {
         // Any new received transactions which are signed using the previous public key will be rejected after this point in time.
         // This prevents users from spamming the pending queue with transactions whose keys are about to be supplanted as part of the
         // upcoming block.
-        for (let transaction of validTransactions) {
+        for (let transaction of readyTransactions) {
           let { senderAccount, multisigMemberAccounts } = senderAccountDetails[transaction.senderAddress];
           if (senderAccount.type === ACCOUNT_TYPE_MULTISIG) {
             for (let signaturePacket of transaction.signatures) {
@@ -2358,7 +2366,7 @@ module.exports = class LDPoSChainModule {
         }
 
         if (this.ldposForgingClients[currentForgingDelegateAddress]) {
-          let pendingTransactions = this.getSortedPendingTransactions(validTransactions, senderAccountDetails);
+          let pendingTransactions = this.getSortedPendingTransactions(readyTransactions, senderAccountDetails);
           let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
           let [ forgedBlock, forgerAccount ] = await Promise.all([
             this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
@@ -3308,6 +3316,7 @@ module.exports = class LDPoSChainModule {
       maxMultisigMembers: DEFAULT_MAX_MULTISIG_MEMBERS,
       minMultisigRegistrationFeePerMember: DEFAULT_MIN_MULTISIG_REGISTRATION_FEE_PER_MEMBER,
       minMultisigTransactionFeePerMember: DEFAULT_MIN_MULTISIG_TRANSACTION_FEE_PER_MEMBER,
+      pendingTransactionSettlementDelay: DEFAULT_PENDING_TRANSACTION_SETTLEMENT_DELAY,
       pendingTransactionExpiry: DEFAULT_PENDING_TRANSACTION_EXPIRY,
       pendingTransactionExpiryCheckInterval: DEFAULT_PENDING_TRANSACTION_EXPIRY_CHECK_INTERVAL,
       maxSpendableDigits: DEFAULT_MAX_SPENDABLE_DIGITS,
