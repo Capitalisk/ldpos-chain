@@ -1254,86 +1254,20 @@ module.exports = class LDPoSChainModule {
       this.untrackPendingTransaction(txn);
     }
 
-    // Remove transactions which are relying on outdated keys from pending transaction maps.
-    for (let senderAddress of senderAddressSet) {
-      let senderAccountInfo = affectedAccountDetails[senderAddress];
-      let senderAccount = senderAccountInfo.account;
-      let senderAccountChanges = senderAccountInfo.changes;
-      let senderType = senderAccountChanges.type || senderAccount.type;
-
-      if (senderType === ACCOUNT_TYPE_MULTISIG) {
-        // For multisig, expire based on multisigPublicKey and nextMultisigPublicKey properties of member accounts.
-        let senderTxnStream = this.pendingTransactionStreams[senderAddress];
-        if (!senderTxnStream) {
-          continue;
-        }
-        let senderMultisigRequiredSignatureCount;
-        if (senderAccountChanges.requiredSignatureCount == null) {
-          senderMultisigRequiredSignatureCount = senderAccount.requiredSignatureCount;
-        } else {
-          senderMultisigRequiredSignatureCount = senderAccountChanges.requiredSignatureCount;
-        }
-        let transactionInfoList = [...senderTxnStream.transactionInfoMap.values()];
-        for (let { transaction: remainingTxn } of transactionInfoList) {
-          let validMemberKeyCount = 0;
-          let remainingSignatures = remainingTxn.signatures || [];
-          for (let { signerAddress, multisigPublicKey } of remainingSignatures) {
-            let memberAccountInfo = affectedAccountDetails[signerAddress];
-            let memberAccount = memberAccountInfo.account;
-            let memberAccountChanges = memberAccountInfo.changes;
-            let memberMultisigPublicKey = memberAccountChanges.multisigPublicKey || memberAccount.multisigPublicKey;
-            let memberNextMultisigPublicKey = memberAccountChanges.nextMultisigPublicKey || memberAccount.nextMultisigPublicKey;
-            if (
-              multisigPublicKey === memberMultisigPublicKey ||
-              multisigPublicKey === memberNextMultisigPublicKey
-            ) {
-              validMemberKeyCount++;
-            }
-          }
-          // Multisig transaction should only be removed if there are not enough members with valid keys
-          // remaining based on the requiredSignatureCount property of the wallet.
-          if (validMemberKeyCount < senderMultisigRequiredSignatureCount) {
-            this.untrackPendingTransaction(remainingTxn);
-          }
-        }
-      } else {
-        // For sig, expire based on the sigPublicKey and nextSigPublicKey properties of the sender account.
-        let senderTxnStream = this.pendingTransactionStreams[senderAddress];
-        if (!senderTxnStream) {
-          continue;
-        }
-        let senderSigPublicKey = senderAccountChanges.sigPublicKey || senderAccount.sigPublicKey;
-        let senderNextSigPublicKey = senderAccountChanges.nextSigPublicKey || senderAccount.nextSigPublicKey;
-        let transactionInfoList = [...senderTxnStream.transactionInfoMap.values()];
-        for (let { transaction: remainingTxn } of transactionInfoList) {
-          if (
-            remainingTxn.sigPublicKey !== senderSigPublicKey &&
-            remainingTxn.sigPublicKey !== senderNextSigPublicKey
-          ) {
-            this.untrackPendingTransaction(remainingTxn);
-          }
-        }
-      }
-    }
-
+    // Update in-memory accounts in transaction streams to ensure that they have the latest sig and multisig public keys.
     await Promise.all(
-      affectedAddressList.map(async (affectedAddress) => {
-        let accountStream = this.pendingTransactionStreams[affectedAddress];
-        if (!accountStream) {
-          return;
-        }
-        // If there is a pending transaction queue for this account, update the
-        // in-memory account to have the latest public keys.
-        let accountInfo = affectedAccountDetails[affectedAddress];
-        let accountChanges = accountInfo.changes || {};
+      Object.keys(this.pendingTransactionStreams).map(async (senderAddress) => {
+        let accountStream = this.pendingTransactionStreams[senderAddress];
         let pendingSenderAccount;
+        let pendingMultisigMemberAccounts;
         try {
           let senderInfo = await accountStream.senderInfoPromise;
           pendingSenderAccount = senderInfo.senderAccount;
+          pendingMultisigMemberAccounts = senderInfo.multisigMemberAccounts || {};
         } catch (error) {
           this.logger.debug(
             `Failed to update public keys of account ${
-              affectedAddress
+              senderAddress
             } in pending queue because of error: ${
               error.message
             }`
@@ -1341,32 +1275,41 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        if (accountChanges.sigPublicKey) {
-          pendingSenderAccount.sigPublicKey = accountChanges.sigPublicKey;
-        }
-        if (accountChanges.nextSigPublicKey) {
-          pendingSenderAccount.nextSigPublicKey = accountChanges.nextSigPublicKey;
-        }
-        if (accountChanges.nextSigKeyIndex) {
-          pendingSenderAccount.nextSigKeyIndex = accountChanges.nextSigKeyIndex;
-        }
-        if (accountChanges.multisigPublicKey) {
-          pendingSenderAccount.multisigPublicKey = accountChanges.multisigPublicKey;
-        }
-        if (accountChanges.nextMultisigPublicKey) {
-          pendingSenderAccount.nextMultisigPublicKey = accountChanges.nextMultisigPublicKey;
-        }
-        if (accountChanges.nextMultisigKeyIndex) {
-          pendingSenderAccount.nextMultisigKeyIndex = accountChanges.nextMultisigKeyIndex;
-        }
-        if (accountChanges.forgingPublicKey) {
-          pendingSenderAccount.forgingPublicKey = accountChanges.forgingPublicKey;
-        }
-        if (accountChanges.nextForgingPublicKey) {
-          pendingSenderAccount.nextForgingPublicKey = accountChanges.nextForgingPublicKey;
-        }
-        if (accountChanges.nextForgingKeyIndex) {
-          pendingSenderAccount.nextForgingKeyIndex = accountChanges.nextForgingKeyIndex;
+        let pendingAccountList = [pendingSenderAccount, ...Object.values(pendingMultisigMemberAccounts)];
+        for (let pendingAccount of pendingAccountList) {
+          let accountInfo = affectedAccountDetails[pendingAccount.address];
+          if (!accountInfo) {
+            continue;
+          }
+          let accountChanges = accountInfo.changes;
+
+          if (accountChanges.sigPublicKey) {
+            pendingAccount.sigPublicKey = accountChanges.sigPublicKey;
+          }
+          if (accountChanges.nextSigPublicKey) {
+            pendingAccount.nextSigPublicKey = accountChanges.nextSigPublicKey;
+          }
+          if (accountChanges.nextSigKeyIndex) {
+            pendingAccount.nextSigKeyIndex = accountChanges.nextSigKeyIndex;
+          }
+          if (accountChanges.multisigPublicKey) {
+            pendingAccount.multisigPublicKey = accountChanges.multisigPublicKey;
+          }
+          if (accountChanges.nextMultisigPublicKey) {
+            pendingAccount.nextMultisigPublicKey = accountChanges.nextMultisigPublicKey;
+          }
+          if (accountChanges.nextMultisigKeyIndex) {
+            pendingAccount.nextMultisigKeyIndex = accountChanges.nextMultisigKeyIndex;
+          }
+          if (accountChanges.forgingPublicKey) {
+            pendingAccount.forgingPublicKey = accountChanges.forgingPublicKey;
+          }
+          if (accountChanges.nextForgingPublicKey) {
+            pendingAccount.nextForgingPublicKey = accountChanges.nextForgingPublicKey;
+          }
+          if (accountChanges.nextForgingKeyIndex) {
+            pendingAccount.nextForgingKeyIndex = accountChanges.nextForgingKeyIndex;
+          }
         }
       })
     );
@@ -1582,11 +1525,13 @@ module.exports = class LDPoSChainModule {
         if (!isPublicKeyValid) {
           invalidPublicKeyMembers.push(memberAccount.address);
           this.logger.debug(
-            `The multisigPublicKey of member ${
+            `The multisigPublicKey ${
+              multisigPublicKey
+            } of member ${
               memberAccount.address
-            } on multisig transaction ${
+            } in multisig transaction ${
               transaction.id
-            } was invalid or supplanted`
+            } was invalid`
           );
         } else if (!this.ldposClient.verifyMultisigTransactionSignature(transaction, signaturePacket)) {
           invalidSignatureMembers.push(memberAccount.address);
@@ -1609,7 +1554,7 @@ module.exports = class LDPoSChainModule {
         // One member should not be able to prevent an otherwise valid multisig transaction from
         // being processed by changing their multisig public key.
         throw new Error(
-          `Multisig transaction did not have enough valid signatures - Members with invalid or supplanted public keys: ${
+          `Multisig transaction did not have enough valid signatures - Members with invalid public keys: ${
             invalidPublicKeyMembers.join(', ')
           }`
         );
@@ -2262,6 +2207,9 @@ module.exports = class LDPoSChainModule {
         let currentForgingDelegateAddress = this.getForgingDelegateAddressAtTimestamp(blockTimestamp);
         let block;
 
+        this.supplantedAddressSigPublicKeySet.clear();
+        this.supplantedAddressMultisigPublicKeySet.clear();
+
         let readyTransactions = [];
         let senderAddressList = Object.keys(this.pendingTransactionStreams);
 
@@ -2301,13 +2249,6 @@ module.exports = class LDPoSChainModule {
             let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
 
             for (let { transaction, receivedTimestamp } of pendingTxnInfoMap.values()) {
-              if (blockTimestamp - receivedTimestamp < pendingTransactionSettlementDelay) {
-                // If a transaction has been sitting in the queue for less than pendingTransactionSettlementDelay,
-                // do not include it in the current block; this is to ensure that there is enough time for any
-                // contending transactions (I.e. signed using an older public key) to propagate through
-                // the network and be received by this node and processed in the correct order.
-                continue;
-              }
               try {
                 let txnTotal;
                 if (multisigMemberAccounts) {
@@ -2316,10 +2257,37 @@ module.exports = class LDPoSChainModule {
                   txnTotal = await this.verifySigTransactionAuth(senderAccount, transaction, true, false);
                 }
 
-                // Subtract valid transaction total from the in-memory senderAccount balance since it
-                // may affect the verification of the next transaction in the stream.
-                senderAccount.balance -= txnTotal;
-                readyTransactions.push(transaction);
+                let isTransactionReady = true;
+
+                if (blockTimestamp - receivedTimestamp >= pendingTransactionSettlementDelay) {
+                  if (senderAccount.type === ACCOUNT_TYPE_MULTISIG) {
+                    for (let signaturePacket of transaction.signatures) {
+                      let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+                      if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+                        this.supplantedAddressMultisigPublicKeySet.add(`${signerAccount.address},${signerAccount.multisigPublicKey}`);
+                      }
+                    }
+                  } else if (transaction.sigPublicKey === senderAccount.nextSigPublicKey) {
+                    this.supplantedAddressSigPublicKeySet.add(`${senderAccount.address},${senderAccount.sigPublicKey}`);
+                  }
+                } else {
+                  if (senderAccount.type === ACCOUNT_TYPE_MULTISIG) {
+                    for (let signaturePacket of transaction.signatures) {
+                      let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+                      if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+                        isTransactionReady = false;
+                      }
+                    }
+                  } else if (transaction.sigPublicKey === senderAccount.nextSigPublicKey) {
+                    isTransactionReady = false;
+                  }
+                }
+                if (isTransactionReady) {
+                  readyTransactions.push(transaction);
+                  // Subtract valid transaction total from the in-memory senderAccount balance since it
+                  // may affect the verification of the next transaction in the stream.
+                  senderAccount.balance -= txnTotal;
+                }
               } catch (error) {
                 this.logger.debug(
                   `Removed pending transaction ${
@@ -2342,27 +2310,6 @@ module.exports = class LDPoSChainModule {
             senderAccount,
             multisigMemberAccounts
           };
-        }
-
-        this.supplantedAddressSigPublicKeySet.clear();
-        this.supplantedAddressMultisigPublicKeySet.clear();
-
-        // At around the time that a block is forged, keep track of all public keys which have been supplanted.
-        // Any new received transactions which are signed using the previous public key will be rejected after this point in time.
-        // This prevents users from spamming the pending queue with transactions whose keys are about to be supplanted as part of the
-        // upcoming block.
-        for (let transaction of readyTransactions) {
-          let { senderAccount, multisigMemberAccounts } = senderAccountDetails[transaction.senderAddress];
-          if (senderAccount.type === ACCOUNT_TYPE_MULTISIG) {
-            for (let signaturePacket of transaction.signatures) {
-              let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
-              if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
-                this.supplantedAddressMultisigPublicKeySet.add(`${signerAccount.address},${signerAccount.multisigPublicKey}`);
-              }
-            }
-          } else if (transaction.sigPublicKey === senderAccount.nextSigPublicKey) {
-            this.supplantedAddressSigPublicKeySet.add(`${senderAccount.address},${senderAccount.sigPublicKey}`);
-          }
         }
 
         if (this.ldposForgingClients[currentForgingDelegateAddress]) {
