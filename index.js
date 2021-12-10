@@ -1563,7 +1563,7 @@ module.exports = class LDPoSChainModule {
           }`
         );
       }
-      // Sanitize the signatures array to exclude signatures of members which had invalid multisig public keys.
+      // Sanitize the signatures array to exclude signatures of members which have invalid multisig public keys.
       transaction.signatures = validSignaturePackets;
     } else {
       if (!this.ldposClient.verifyTransactionId(transaction)) {
@@ -1610,9 +1610,9 @@ module.exports = class LDPoSChainModule {
     return this.verifyAccountMeetsRequirements(senderAccount, transaction);
   }
 
-  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, signatureCheck, rejectSupplantedPublicKey) {
-    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, signatureCheck, rejectSupplantedPublicKey);
-    return this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, signatureCheck);
+  async verifyMultisigTransactionAuth(senderAccount, multisigMemberAccounts, transaction, processSignatures, rejectSupplantedPublicKey) {
+    this.verifyMultisigTransactionAuthentication(senderAccount, multisigMemberAccounts, transaction, processSignatures, rejectSupplantedPublicKey);
+    return this.verifyMultisigTransactionAuthorization(senderAccount, multisigMemberAccounts, transaction, processSignatures);
   }
 
   async verifyFullySignedBlock(block, lastBlock) {
@@ -2969,7 +2969,7 @@ module.exports = class LDPoSChainModule {
 
             if (!allSignaturesMatchPending) {
               this.logger.debug(
-                `Block ${block.id} contained a multisig transaction ${txn.id} with missing or invalid signature hashes`
+                `Block ${block.id} contained a multisig transaction ${txn.id} with invalid or unrecognized signature hashes`
               );
               return;
             }
