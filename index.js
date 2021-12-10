@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const path = require('path');
 const shuffle = require('lodash.shuffle');
 const WritableConsumableStream = require('writable-consumable-stream');
 
@@ -31,7 +32,7 @@ const CIPHER_KEY = LDPOS_PASSWORD ? crypto.scryptSync(LDPOS_PASSWORD, 'salt', 24
 const CIPHER_IV = Buffer.alloc(16, 0);
 
 const DEFAULT_MODULE_ALIAS = 'ldpos_chain';
-const DEFAULT_GENESIS_PATH = './genesis/mainnet/genesis.json';
+const DEFAULT_GENESIS_PATH = path.resolve(__dirname, './genesis/mainnet/genesis.json');
 const DEFAULT_NETWORK_SYMBOL = 'ldpos';
 const DEFAULT_CRYPTO_CLIENT_LIB_PATH = 'ldpos-client';
 const DEFAULT_FORGER_COUNT = 15;
@@ -123,7 +124,7 @@ module.exports = class LDPoSChainModule {
         `The ${this.alias} module config needs to have a components.dal.libPath property`
       );
     }
-    const DAL = require(this.dalConfig.libPath);
+    const DAL = require(path.resolve(this.dalConfig.libPath));
     this.dal = new DAL({
       ...this.dalConfig,
       logger: this.logger
@@ -3364,7 +3365,9 @@ module.exports = class LDPoSChainModule {
       );
     }
 
-    this.genesis = require(this.options.genesisPath || DEFAULT_GENESIS_PATH);
+    this.genesis = require(
+      this.options.genesisPath == null ? DEFAULT_GENESIS_PATH : path.resolve(this.options.genesisPath)
+    );
     try {
       await this.dal.init({
         genesis: this.genesis,
@@ -3379,7 +3382,8 @@ module.exports = class LDPoSChainModule {
 
     this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
 
-    this.cryptoClientLibPath = this.options.cryptoClientLibPath || DEFAULT_CRYPTO_CLIENT_LIB_PATH;
+    this.cryptoClientLibPath = this.options.cryptoClientLibPath == null ?
+      DEFAULT_CRYPTO_CLIENT_LIB_PATH : path.resolve(this.options.cryptoClientLibPath);
     let { createClient } = require(this.cryptoClientLibPath);
 
     this.ldposClient = createClient({
