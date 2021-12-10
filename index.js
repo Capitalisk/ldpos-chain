@@ -72,6 +72,9 @@ const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
 const DEFAULT_MAX_PUBLIC_API_OFFSET = 1000;
 const DEFAULT_MAX_PRIVATE_API_OFFSET = 10000;
+const DEFAULT_KEY_DIR_PATH = null;
+const DEFAULT_KEY_FILE_EXTENSION = '';
+const DEFAULT_KEY_FILE_LOCK_OPTIONS = {};
 
 const PROPAGATION_MODE_DELAYED = 'delayed';
 const PROPAGATION_MODE_IMMEDIATE = 'immediate';
@@ -3281,7 +3284,10 @@ module.exports = class LDPoSChainModule {
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
       maxPublicAPIOffset: DEFAULT_MAX_PUBLIC_API_OFFSET,
-      maxPrivateAPIOffset: DEFAULT_MAX_PRIVATE_API_OFFSET
+      maxPrivateAPIOffset: DEFAULT_MAX_PRIVATE_API_OFFSET,
+      keyDirPath: DEFAULT_KEY_DIR_PATH,
+      keyFileExtension: DEFAULT_KEY_FILE_EXTENSION,
+      keyFileLockOptions: DEFAULT_KEY_FILE_LOCK_OPTIONS
     };
     this.options = {...defaultOptions, ...options};
     this.chainInfo = {
@@ -3378,9 +3384,11 @@ module.exports = class LDPoSChainModule {
 
     this.ldposClient = createClient({
       adapter: this.dal,
-      store: this.dal,
       networkSymbol: this.networkSymbol,
-      verifyNetwork: false
+      verifyNetwork: false,
+      keyDirPath: this.options.keyDirPath,
+      keyFileExtension: this.options.keyFileExtension,
+      keyFileLockOptions: this.options.keyFileLockOptions
     });
 
     this.ldposForgingClients = {};
@@ -3392,9 +3400,11 @@ module.exports = class LDPoSChainModule {
           let forgingPassphrase = this.getForgingPassphrase(forgerInfo);
           let forgingClient = createClient({
             adapter: this.dal,
-            store: this.dal,
             networkSymbol: this.networkSymbol,
-            verifyNetwork: false
+            verifyNetwork: false,
+            keyDirPath: this.options.keyDirPath,
+            keyFileExtension: this.options.keyFileExtension,
+            keyFileLockOptions: this.options.keyFileLockOptions
           });
           await forgingClient.connect({
             passphrase: forgingPassphrase,
