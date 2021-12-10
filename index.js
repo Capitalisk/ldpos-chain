@@ -72,9 +72,9 @@ const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
 const DEFAULT_MAX_PUBLIC_API_OFFSET = 1000;
 const DEFAULT_MAX_PRIVATE_API_OFFSET = 10000;
-const DEFAULT_KEY_DIR_PATH = null;
-const DEFAULT_KEY_FILE_EXTENSION = '';
-const DEFAULT_KEY_FILE_LOCK_OPTIONS = {};
+const DEFAULT_KEY_INDEX_DIR_PATH = null;
+const DEFAULT_KEY_INDEX_FILE_EXTENSION = '';
+const DEFAULT_KEY_INDEX_FILE_LOCK_OPTIONS = {};
 
 const PROPAGATION_MODE_DELAYED = 'delayed';
 const PROPAGATION_MODE_IMMEDIATE = 'immediate';
@@ -3285,9 +3285,9 @@ module.exports = class LDPoSChainModule {
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
       maxPublicAPIOffset: DEFAULT_MAX_PUBLIC_API_OFFSET,
       maxPrivateAPIOffset: DEFAULT_MAX_PRIVATE_API_OFFSET,
-      keyDirPath: DEFAULT_KEY_DIR_PATH,
-      keyFileExtension: DEFAULT_KEY_FILE_EXTENSION,
-      keyFileLockOptions: DEFAULT_KEY_FILE_LOCK_OPTIONS
+      keyIndexDirPath: DEFAULT_KEY_INDEX_DIR_PATH,
+      keyIndexFileExtension: DEFAULT_KEY_INDEX_FILE_EXTENSION,
+      keyIndexFileLockOptions: DEFAULT_KEY_INDEX_FILE_LOCK_OPTIONS
     };
     this.options = {...defaultOptions, ...options};
     this.chainInfo = {
@@ -3386,9 +3386,9 @@ module.exports = class LDPoSChainModule {
       adapter: this.dal,
       networkSymbol: this.networkSymbol,
       verifyNetwork: false,
-      keyDirPath: this.options.keyDirPath,
-      keyFileExtension: this.options.keyFileExtension,
-      keyFileLockOptions: this.options.keyFileLockOptions
+      keyIndexDirPath: this.options.keyIndexDirPath,
+      keyIndexFileExtension: this.options.keyIndexFileExtension,
+      keyIndexFileLockOptions: this.options.keyIndexFileLockOptions
     });
 
     this.ldposForgingClients = {};
@@ -3402,9 +3402,9 @@ module.exports = class LDPoSChainModule {
             adapter: this.dal,
             networkSymbol: this.networkSymbol,
             verifyNetwork: false,
-            keyDirPath: this.options.keyDirPath,
-            keyFileExtension: this.options.keyFileExtension,
-            keyFileLockOptions: this.options.keyFileLockOptions
+            keyIndexDirPath: this.options.keyIndexDirPath,
+            keyIndexFileExtension: this.options.keyIndexFileExtension,
+            keyIndexFileLockOptions: this.options.keyIndexFileLockOptions
           });
           await forgingClient.connect({
             passphrase: forgingPassphrase,
