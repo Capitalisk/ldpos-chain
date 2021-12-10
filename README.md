@@ -21,3 +21,8 @@ yarn test
 ```shell script
 ./scripts/stop-postgres.sh
 ```
+
+## License
+
+The license is `GPL-3.0` with one additional condition:
+Misrepresenting the origin of this code or code derived from it is not permitted.
