@@ -18,7 +18,8 @@ describe('Functional tests', async () => {
   let chainModule;
   let dal;
   let adapter;
-  let store;
+  let keyIndex;
+  let keyManager;
   let channel;
   let options;
   let bootstrapEventTriggered;
@@ -61,12 +62,17 @@ describe('Functional tests', async () => {
       }
     };
 
-    store = {
-      saveItem: async () => {},
-      loadItem: async () => {
-        return '0';
+    keyIndex = 0;
+
+    keyManager = {
+      saveKeyIndex: async () => {},
+      loadKeyIndex: async () => {
+        return 0;
       },
-      deleteItem: async () => {}
+      incrementKeyIndex: async () => {
+        return keyIndex++;
+      },
+      deleteKeyIndex: async () => {},
     };
 
     channel = new Channel({
@@ -121,7 +127,7 @@ describe('Functional tests', async () => {
         await chainModule.load(channel, options);
         clientForger = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await clientForger.connect({
@@ -133,7 +139,7 @@ describe('Functional tests', async () => {
 
         clientA = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await clientA.connect({
@@ -247,7 +253,7 @@ describe('Functional tests', async () => {
       await wait(2000);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -259,7 +265,7 @@ describe('Functional tests', async () => {
 
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -442,7 +448,7 @@ describe('Functional tests', async () => {
         // Address: ldpos6da4367efe495a14a8cc38064c61879cea884e60
         multisigClient = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await multisigClient.connect({
@@ -452,7 +458,7 @@ describe('Functional tests', async () => {
         // Address: ldposaed82ed3f324e738306301ca4d6b955580d4bc24
         clientB = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await clientB.connect({
@@ -555,7 +561,7 @@ describe('Functional tests', async () => {
 
         multisigClient = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await multisigClient.connect({
@@ -564,7 +570,7 @@ describe('Functional tests', async () => {
 
         clientB = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         await clientB.connect({
@@ -683,7 +689,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -695,7 +701,7 @@ describe('Functional tests', async () => {
 
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -725,7 +731,7 @@ describe('Functional tests', async () => {
 
         firstRecipientClient = createClient({
           adapter,
-          store,
+          keyManager,
           networkSymbol: NETWORK_SYMBOL
         });
         // Address: ldpos3a7bb5751c811b76bf13edce4105b5b330a71054
@@ -839,7 +845,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -851,7 +857,7 @@ describe('Functional tests', async () => {
 
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -994,7 +1000,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -1006,7 +1012,7 @@ describe('Functional tests', async () => {
 
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -1113,7 +1119,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -1123,7 +1129,7 @@ describe('Functional tests', async () => {
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -1133,7 +1139,7 @@ describe('Functional tests', async () => {
       // Address: ldposaed82ed3f324e738306301ca4d6b955580d4bc24
       clientB = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientB.connect({
@@ -1338,7 +1344,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -1348,7 +1354,7 @@ describe('Functional tests', async () => {
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -1476,7 +1482,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -1486,7 +1492,7 @@ describe('Functional tests', async () => {
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -1591,7 +1597,7 @@ describe('Functional tests', async () => {
       await chainModule.load(channel, options);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -1601,7 +1607,7 @@ describe('Functional tests', async () => {
       // Address: ldpos5f0bc55450657f7fcb188e90122f7e4cee894199
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({

@@ -22,7 +22,8 @@ describe('DEX API tests', async () => {
   let chainModule;
   let dal;
   let adapter;
-  let store;
+  let keyIndex;
+  let keyManager;
   let channel;
   let options;
   let bootstrapEventTriggered;
@@ -63,12 +64,17 @@ describe('DEX API tests', async () => {
       }
     };
 
-    store = {
-      saveItem: async () => {},
-      loadItem: async () => {
-        return '0';
+    keyIndex = 0;
+
+    keyManager = {
+      saveKeyIndex: async () => {},
+      loadKeyIndex: async () => {
+        return 0;
       },
-      deleteItem: async () => {}
+      incrementKeyIndex: async () => {
+        return keyIndex++;
+      },
+      deleteKeyIndex: async () => {},
     };
 
     channel = new Channel({
@@ -97,7 +103,7 @@ describe('DEX API tests', async () => {
       await chainModule.load(channel, moduleOptions);
       clientForger = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientForger.connect({
@@ -242,7 +248,7 @@ describe('DEX API tests', async () => {
 
       clientA = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientA.connect({
@@ -251,7 +257,7 @@ describe('DEX API tests', async () => {
 
       clientB = createClient({
         adapter,
-        store,
+        keyManager,
         networkSymbol: NETWORK_SYMBOL
       });
       await clientB.connect({
