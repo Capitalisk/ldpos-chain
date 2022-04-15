@@ -1,6 +1,6 @@
 {
   "name": "ldpos-chain",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "description": "LDPoS chain module",
   "main": "index.js",
   "scripts": {
@@ -28,7 +28,7 @@
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
-    "ldpos-pg-dal": "^4.6.1",
+    "ldpos-pg-dal": "^4.6.2",
     "mocha": "^8.2.1"
   }
 }
