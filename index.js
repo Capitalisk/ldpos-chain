@@ -1106,7 +1106,8 @@ module.exports = class LDPoSChainModule {
         if (!hasDelegate) {
           await this.dal.upsertDelegate({
             address: delegateAddress,
-            voteWeight: '0'
+            voteWeight: '0',
+            forgingRewards: '0'
           });
         }
       })
@@ -1131,6 +1132,7 @@ module.exports = class LDPoSChainModule {
     let affectedDelegateDetails = {};
     let voteChangeDelegateAddressList = [...new Set(voteChangeList.map(voteChange => voteChange.delegateAddress))];
     let affectedDelegateAddressSet = new Set([
+      block.forgerAddress,
       ...Object.keys(delegateVoters),
       ...voteChangeDelegateAddressList
     ]);
@@ -1163,6 +1165,8 @@ module.exports = class LDPoSChainModule {
         };
       })
     );
+
+    affectedDelegateDetails[block.forgerAddress].forgingRewardsDelta = totalBlockFees;
 
     let voterVoteChanges = {};
 
@@ -1212,11 +1216,14 @@ module.exports = class LDPoSChainModule {
       affectedDelegateAddressList.map(async (delegateAddress) => {
         let delegateInfo = affectedDelegateDetails[delegateAddress];
         let { delegate } = delegateInfo;
-        let updatedVoteWeight = BigInt(delegate.voteWeight) + delegateInfo.voteWeightDelta;
-        let delegateUpdatePacket = {
-          voteWeight: updatedVoteWeight.toString(),
-          updateHeight: height
-        };
+        let delegateUpdatePacket = {};
+        if (delegateInfo.voteWeightDelta) {
+          delegateUpdatePacket.voteWeight = (BigInt(delegate.voteWeight) + delegateInfo.voteWeightDelta).toString();
+        }
+        if (delegateInfo.forgingRewardsDelta) {
+          delegateUpdatePacket.forgingRewards = (BigInt(delegate.forgingRewards) + delegateInfo.forgingRewardsDelta).toString();
+        }
+        delegateUpdatePacket.updateHeight = height;
         if (delegate.updateHeight == null || delegate.updateHeight < height) {
           await this.dal.upsertDelegate({
             address: delegate.address,
