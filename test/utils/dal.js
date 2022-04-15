@@ -36,7 +36,8 @@ class DAL {
         if (account.forgingPublicKey) {
           await this.upsertDelegate({
             address: account.address,
-            voteWeight: '0'
+            voteWeight: '0',
+            forgingRewards: '0'
           });
         }
       })
@@ -54,7 +55,8 @@ class DAL {
         let updatedVoteWeight = BigInt(delegate.voteWeight) + BigInt(accountInfo.balance);
         await this.upsertDelegate({
           address: delegateAddress,
-          voteWeight: updatedVoteWeight.toString()
+          voteWeight: updatedVoteWeight.toString(),
+          forgingRewards: '0'
         });
       }
     }
