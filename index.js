@@ -73,6 +73,7 @@ const DEFAULT_MAX_PUBLIC_API_LIMIT = 100;
 const DEFAULT_MAX_PRIVATE_API_LIMIT = 10000;
 const DEFAULT_MAX_PUBLIC_API_OFFSET = 10000;
 const DEFAULT_MAX_PRIVATE_API_OFFSET = 10000000;
+const DEFAULT_PUBLIC_GENESIS = true;
 const DEFAULT_KEY_INDEX_DIR_PATH = null;
 const DEFAULT_KEY_INDEX_FILE_EXTENSION = '';
 const DEFAULT_KEY_INDEX_FILE_LOCK_OPTIONS = {};
@@ -151,6 +152,7 @@ module.exports = class LDPoSChainModule {
     this.moduleState = {
       isOnTip: false
     };
+    this.publicGenesis = false;
   }
 
   get dependencies() {
@@ -556,6 +558,10 @@ module.exports = class LDPoSChainModule {
       getAPIInfo: {
         handler: async action => this.apiInfo,
         isPublic: true
+      },
+      getGenesis: {
+        handler: async action => this.genesis,
+        isPublic: this.publicGenesis
       },
       getModuleOptions: {
         handler: async action => this.options
@@ -3289,6 +3295,7 @@ module.exports = class LDPoSChainModule {
       geneses: DEFAULT_GENESES,
       blockForgerSamplingFactor: DEFAULT_BLOCK_FORGER_SAMPLING_FACTOR,
       apiLimit: DEFAULT_API_LIMIT,
+      publicGenesis: DEFAULT_PUBLIC_GENESIS,
       maxPublicAPILimit: DEFAULT_MAX_PUBLIC_API_LIMIT,
       maxPrivateAPILimit: DEFAULT_MAX_PRIVATE_API_LIMIT,
       maxPublicAPIOffset: DEFAULT_MAX_PUBLIC_API_OFFSET,
@@ -3298,7 +3305,19 @@ module.exports = class LDPoSChainModule {
       keyIndexFileLockOptions: DEFAULT_KEY_INDEX_FILE_LOCK_OPTIONS
     };
     this.options = {...defaultOptions, ...options};
+    this.publicGenesis = this.options.publicGenesis;
+
+    this.genesis = require(
+      this.options.genesisPath == null ? DEFAULT_GENESIS_PATH : path.resolve(this.options.genesisPath)
+    );
+    this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
+    let initialTokenSupply = (this.genesis.accounts || []).reduce(
+      (tokenSupply, genesisAccount) => tokenSupply + BigInt(genesisAccount.balance),
+      0n
+    );
+
     this.chainInfo = {
+      networkSymbol: this.networkSymbol,
       forgingInterval: this.options.forgingInterval,
       forgerCount: this.options.forgerCount,
       minForgerBlockSignatureRatio: this.options.minForgerBlockSignatureRatio,
@@ -3310,7 +3329,8 @@ module.exports = class LDPoSChainModule {
       maxTransactionMessageLength: this.options.maxTransactionMessageLength,
       maxVotesPerAccount: this.options.maxVotesPerAccount,
       maxTransactionBackpressurePerAccount: this.options.maxTransactionBackpressurePerAccount,
-      maxPendingTransactionsPerAccount: this.options.maxPendingTransactionsPerAccount
+      maxPendingTransactionsPerAccount: this.options.maxPendingTransactionsPerAccount,
+      initialTokenSupply: initialTokenSupply.toString()
     };
     this.apiInfo = {
       apiLimit: this.options.apiLimit,
@@ -3372,9 +3392,6 @@ module.exports = class LDPoSChainModule {
       );
     }
 
-    this.genesis = require(
-      this.options.genesisPath == null ? DEFAULT_GENESIS_PATH : path.resolve(this.options.genesisPath)
-    );
     try {
       await this.dal.init({
         genesis: this.genesis,
@@ -3386,8 +3403,6 @@ module.exports = class LDPoSChainModule {
       );
     }
     await this.checkGenesesConfig();
-
-    this.networkSymbol = this.genesis.networkSymbol || DEFAULT_NETWORK_SYMBOL;
 
     this.cryptoClientLibPath = this.options.cryptoClientLibPath == null ?
       DEFAULT_CRYPTO_CLIENT_LIB_PATH : path.resolve(this.options.cryptoClientLibPath);
