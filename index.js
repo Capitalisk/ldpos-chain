@@ -1225,9 +1225,13 @@ module.exports = class LDPoSChainModule {
         let delegateUpdatePacket = {};
         if (delegateInfo.voteWeightDelta) {
           delegateUpdatePacket.voteWeight = (BigInt(delegate.voteWeight) + delegateInfo.voteWeightDelta).toString();
+        } else {
+          delegateUpdatePacket.voteWeight = delegate.voteWeight;
         }
         if (delegateInfo.forgingRewardsDelta) {
           delegateUpdatePacket.forgingRewards = (BigInt(delegate.forgingRewards) + delegateInfo.forgingRewardsDelta).toString();
+        } else {
+          delegateUpdatePacket.forgingRewards = delegate.forgingRewards;
         }
         delegateUpdatePacket.updateHeight = height;
         if (delegate.updateHeight == null || delegate.updateHeight < height) {
