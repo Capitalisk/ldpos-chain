@@ -892,6 +892,29 @@ describe('Functional tests', async () => {
         assert.equal(activeDelegatesAfterList[1].voteWeight, '99980000000');
       });
 
+      it('should update vote and voter lists', async () => {
+        let votes = await chainModule.actions.getAccountVotes.handler({
+          params: {
+            walletAddress: clientA.walletAddress
+          }
+        });
+        assert.equal(Array.isArray(votes), true);
+        assert.equal(votes.length, 2);
+        assert.equal(votes[1], 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199');
+
+        let voters = await chainModule.actions.getDelegateVoters.handler({
+          params: {
+            walletAddress: 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199',
+            offset: 0,
+            limit: 10,
+            order: 'asc'
+          }
+        });
+        assert.equal(Array.isArray(voters), true);
+        assert.equal(voters.length, 1);
+        assert.equal(voters[0], clientA.walletAddress);
+      });
+
     });
 
     describe('invalid vote; already voted for delegate', async () => {

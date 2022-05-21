@@ -28,7 +28,7 @@
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
-    "ldpos-pg-dal": "^4.6.6",
+    "ldpos-pg-dal": "^5.0.0",
     "mocha": "^8.2.1"
   }
 }

@@ -194,8 +194,8 @@ module.exports = class LDPoSChainModule {
       getAccountsByBalance: {
         handler: async action => {
           let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -250,10 +250,10 @@ module.exports = class LDPoSChainModule {
       },
       getOutboundPendingTransactions: {
         handler: async action => {
-          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           let { walletAddress, offset, limit } = action.params;
           offset = this.sanitizeOffset(offset);
@@ -293,8 +293,8 @@ module.exports = class LDPoSChainModule {
       getTransactionsByTimestamp: {
         handler: async action => {
           let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -307,13 +307,13 @@ module.exports = class LDPoSChainModule {
       },
       getAccountTransactions: {
         handler: async action => {
-          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
           if (action.params.fromTimestamp != null) {
             validateTimestamp('fromTimestamp', action.params);
           }
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { walletAddress, fromTimestamp, offset, limit, order } = action.params;
@@ -326,13 +326,13 @@ module.exports = class LDPoSChainModule {
       },
       getInboundTransactions: {
         handler: async action => {
-          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
           if (action.params.fromTimestamp != null) {
             validateTimestamp('fromTimestamp', action.params);
           }
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { walletAddress, fromTimestamp, offset, limit, order } = action.params;
@@ -345,13 +345,13 @@ module.exports = class LDPoSChainModule {
       },
       getOutboundTransactions: {
         handler: async action => {
-          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateWalletAddress('walletAddress', action.params, this.networkSymbol);
           if (action.params.fromTimestamp != null) {
             validateTimestamp('fromTimestamp', action.params);
           }
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { walletAddress, fromTimestamp, offset, limit, order } = action.params;
@@ -364,10 +364,10 @@ module.exports = class LDPoSChainModule {
       },
       getTransactionsFromBlock: {
         handler: async action => {
-          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateBlockId('blockId', action.params);
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           let { blockId, offset, limit } = action.params;
           offset = this.sanitizeOffset(offset);
@@ -487,8 +487,8 @@ module.exports = class LDPoSChainModule {
       getBlocksByTimestamp: {
         handler: async action => {
           let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
@@ -507,11 +507,27 @@ module.exports = class LDPoSChainModule {
         },
         isPublic: true
       },
+      getDelegateVoters: {
+        handler: async action => {
+          validateWalletAddress('walletAddress', action.params, this.networkSymbol);
+          let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
+          validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
+          validateLimit('limit', action.params, maxLimit);
+          validateSortOrder('order', action.params);
+          let { walletAddress, offset, limit, order } = action.params;
+          offset = this.sanitizeOffset(offset);
+          limit = this.sanitizeLimit(limit);
+          order = this.sanitizeOrder(order);
+          return this.dal.getDelegateVoters(walletAddress, offset, limit, order);
+        },
+        isPublic: true
+      },
       getDelegatesByVoteWeight: {
         handler: async action => {
           let maxOffset = action.isPublic ? this.maxPublicAPIOffset : this.maxPrivateAPIOffset;
-          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateOffset('offset', action.params, maxOffset);
+          let maxLimit = action.isPublic ? this.maxPublicAPILimit : this.maxPrivateAPILimit;
           validateLimit('limit', action.params, maxLimit);
           validateSortOrder('order', action.params);
           let { offset, limit, order } = action.params;
