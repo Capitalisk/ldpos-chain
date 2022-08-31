@@ -404,7 +404,15 @@ module.exports = class LDPoSChainModule {
       },
       getMaxBlockHeight: {
         handler: async action => {
-          return this.dal.getMaxBlockHeight();
+          let maxHeight = await this.dal.getMaxBlockHeight();
+          if (
+            action.params.includeSkipped &&
+            this.lastHandledBlock &&
+            this.lastHandledBlock.height === maxHeight + 1
+          ) {
+            return this.lastHandledBlock.height;
+          }
+          return maxHeight;
         },
         isPublic: true
       },
@@ -456,7 +464,23 @@ module.exports = class LDPoSChainModule {
           validateLimit('limit', action.params, maxLimit);
           let { fromHeight, toHeight, limit } = action.params;
           limit = this.sanitizeLimit(limit);
-          return this.dal.getBlocksBetweenHeights(fromHeight, toHeight, limit);
+          let blocks = await this.dal.getBlocksBetweenHeights(fromHeight, toHeight, limit);
+          let appendHeight = blocks.length ? blocks[blocks.length - 1].height : fromHeight;
+          if (
+            action.params.includeSkipped &&
+            this.lastHandledBlock &&
+            this.lastHandledBlock.height === appendHeight + 1 &&
+            this.lastHandledBlock.height <= toHeight
+          ) {
+            return [
+              ...blocks,
+              {
+                ...this.simplifyBlock(this.lastHandledBlock),
+                isSkipped: true
+              }
+            ];
+          }
+          return blocks;
         },
         isPublic: true
       },
