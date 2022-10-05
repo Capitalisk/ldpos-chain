@@ -697,7 +697,9 @@ describe('DEX API tests', async () => {
     describe('getMaxBlockHeight action', async () => {
 
       it('should return the height of the block as an integer number', async () => {
-        let height = await chainModule.actions.getMaxBlockHeight.handler();
+        let height = await chainModule.actions.getMaxBlockHeight.handler({
+          params: {}
+        });
         assert.equal(height, 3);
       });
 
