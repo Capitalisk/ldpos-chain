@@ -687,22 +687,35 @@ module.exports = class LDPoSChainModule {
       let newBlocks;
       let response;
 
-      let matchingGenesesHeights = this.genesesHeights.filter(genHeight => genHeight <= nextBlockHeight);
+      let endBlockHeight = nextBlockHeight + fetchBlockLimit;
 
-      let genesesQueryParts = matchingGenesesHeights.map((genHeight) => {
-        let genSignatureCount = this.geneses[genHeight];
-        return `${GENESIS_INDICATOR}${genHeight}-${genSignatureCount}=1`;
-      });
+      let genesisHeightAtStart = this.getMaxValueUnderThreshold(this.genesesHeights, nextBlockHeight);
+      let genesisHeightAtEnd = this.getMaxValueUnderThreshold(this.genesesHeights, endBlockHeight);
 
-      let requiredSignatureCountAtStart = this.getRequiredBlockSignatureCountAtHeight(nextBlockHeight);
-      let requiredSignatureCountAtEnd = this.getRequiredBlockSignatureCountAtHeight(nextBlockHeight + fetchBlockLimit);
+      let requiredSignatureCountAtStart = this.geneses[genesisHeightAtStart];
+      let requiredSignatureCountAtEnd = this.geneses[genesisHeightAtEnd];
+
       let signatureLimit = Math.max(requiredSignatureCountAtStart, requiredSignatureCountAtEnd);
 
-      let actionRouteString = `${
-        this.alias
-      }?match=or&${
-        genesesQueryParts.join('&')
-      }`;
+      let actionRouteString;
+
+      if (genesisHeightAtStart === genesisHeightAtEnd) {
+        actionRouteString = `${this.alias}?${GENESIS_INDICATOR}${
+          genesisHeightAtStart
+        }-${
+          requiredSignatureCountAtStart
+        }=1`;
+      } else {
+        actionRouteString = `${this.alias}?${GENESIS_INDICATOR}${
+          genesisHeightAtStart
+        }-${
+          requiredSignatureCountAtStart
+        }=1&${
+          genesisHeightAtEnd
+        }-${
+          requiredSignatureCountAtEnd
+        }=1`;
+      }
 
       try {
         response = await this.channel.invoke('network:request', {
@@ -1386,17 +1399,21 @@ module.exports = class LDPoSChainModule {
     this.logger.info(`Finished processing block ${block.id} at height ${block.height}`);
   }
 
-  getRequiredBlockSignatureCountAtHeight(height) {
-    let matchingGenesesHeights = this.genesesHeights.filter(genHeight => genHeight <= height);
-    let maxMatchingGenHeight = matchingGenesesHeights.reduce(
-      (maxHeight, genHeight) => {
-        if (maxHeight == null || genHeight > maxHeight) {
-          return genHeight;
+  getMaxValueUnderThreshold(values, threshold) {
+    let matchingValues = values.filter(value => value <= threshold);
+    return matchingValues.reduce(
+      (maxValue, value) => {
+        if (maxValue == null || value > maxValue) {
+          return value;
         }
-        return maxHeight;
+        return maxValue;
       },
       null
     );
+  }
+
+  getRequiredBlockSignatureCountAtHeight(height) {
+    let maxMatchingGenHeight = this.getMaxValueUnderThreshold(this.genesesHeights, height);
     return this.geneses[maxMatchingGenHeight];
   }
 
@@ -3231,11 +3248,11 @@ module.exports = class LDPoSChainModule {
       );
     }
 
-    let lastGenesesHeight = this.genesesHeights[this.genesesHeights.length - 1];
+    let lastGenesisHeight = this.genesesHeights[this.genesesHeights.length - 1];
     let maxBlockHeight = await this.dal.getMaxBlockHeight();
 
     let milestoneHeights = [...this.genesesHeights];
-    if (maxBlockHeight > lastGenesesHeight) {
+    if (maxBlockHeight > lastGenesisHeight) {
       milestoneHeights.push(maxBlockHeight);
     }
     let milestonesLength = milestoneHeights.length;
