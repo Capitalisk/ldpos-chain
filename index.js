@@ -706,11 +706,17 @@ module.exports = class LDPoSChainModule {
           requiredSignatureCountAtStart
         }=1`;
       } else {
-        actionRouteString = `${this.alias}?${GENESIS_INDICATOR}${
+        actionRouteString = `${
+          this.alias
+        }?${
+          GENESIS_INDICATOR
+        }${
           genesisHeightAtStart
         }-${
           requiredSignatureCountAtStart
         }=1&${
+          GENESIS_INDICATOR
+        }${
           genesisHeightAtEnd
         }-${
           requiredSignatureCountAtEnd
