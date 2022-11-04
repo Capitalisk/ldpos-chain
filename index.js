@@ -689,8 +689,8 @@ module.exports = class LDPoSChainModule {
 
       let endBlockHeight = nextBlockHeight + fetchBlockLimit;
 
-      let genesisHeightAtStart = this.getMaxValueUnderThreshold(this.genesesHeights, nextBlockHeight);
-      let genesisHeightAtEnd = this.getMaxValueUnderThreshold(this.genesesHeights, endBlockHeight);
+      let genesisHeightAtStart = this.getTargetGenesisHeight(this.genesesHeights, nextBlockHeight);
+      let genesisHeightAtEnd = this.getTargetGenesisHeight(this.genesesHeights, endBlockHeight);
 
       let requiredSignatureCountAtStart = this.geneses[genesisHeightAtStart];
       let requiredSignatureCountAtEnd = this.geneses[genesisHeightAtEnd];
@@ -1403,6 +1403,22 @@ module.exports = class LDPoSChainModule {
 
     this.lastProcessedBlock = block;
     this.logger.info(`Finished processing block ${block.id} at height ${block.height}`);
+  }
+
+  getTargetGenesisHeight(heightList, thresholdHeight) {
+    let sortedMatchingHeights = heightList
+      .filter(height => height <= thresholdHeight)
+      .sort((heightA, heightB) => heightB - heightA);
+    let targetHeight = sortedMatchingHeights[0];
+    let latestSignatureCount = this.geneses[targetHeight];
+    for (let height of sortedMatchingHeights) {
+      let requiredSignatureCount = this.geneses[height];
+      if (requiredSignatureCount !== latestSignatureCount) {
+        break;
+      }
+      targetHeight = height;
+    }
+    return targetHeight;
   }
 
   getMaxValueUnderThreshold(values, threshold) {
@@ -3262,11 +3278,21 @@ module.exports = class LDPoSChainModule {
       milestoneHeights.push(maxBlockHeight);
     }
     let milestonesLength = milestoneHeights.length;
+    let lastRequiredSignatureCount = 0;
 
     for (let i = 1; i < milestonesLength; i++) {
       let rangeStartHeight = milestoneHeights[i - 1];
-
       let requiredSignatureCount = this.geneses[rangeStartHeight];
+
+      if (requiredSignatureCount < lastRequiredSignatureCount) {
+        throw new Error(
+          `The geneses config was invalid at height ${
+            rangeStartHeight
+          } - Signature requirement cannot decrease as height increases`
+        );
+      }
+      lastRequiredSignatureCount = requiredSignatureCount;
+
       let rangeEndHeight = milestoneHeights[i] - 1;
       let rangeHeightDiff = rangeEndHeight - rangeStartHeight;
       let rangeMidHeight = rangeStartHeight + Math.round(rangeHeightDiff / 2);
@@ -3439,7 +3465,7 @@ module.exports = class LDPoSChainModule {
     this.maxPendingTransactionsPerAccount = this.options.maxPendingTransactionsPerAccount;
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
     this.geneses = this.options.geneses;
-    this.genesesHeights = Object.keys(this.geneses).map(heightString => Number(heightString));
+    this.genesesHeights = Object.keys(this.geneses).map(heightString => Number(heightString)).sort();
     this.blockForgerSamplingFactor = this.options.blockForgerSamplingFactor;
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
