@@ -27,6 +27,15 @@ const {
   LDPOS_FORGING_KEY_INDEX
 } = process.env;
 
+// Cipher configuration for encrypting forging passphrases.
+// A fixed salt is used for key derivation because:
+// 1. This is not password hashing for authentication (no rainbow table attack risk)
+// 2. Each encrypted passphrase is stored in config and decrypted at runtime
+// 3. Security comes from the strength of LDPOS_PASSWORD, not salt randomness
+// 4. Salt doesn't need to be secret or unique per installation
+//
+// IMPORTANT: Users must choose a strong LDPOS_PASSWORD to protect their encrypted
+// forging passphrases. The security of the encryption depends entirely on password strength.
 const CIPHER_ALGORITHM = 'aes-192-cbc';
 const CIPHER_KEY = LDPOS_PASSWORD ? crypto.scryptSync(LDPOS_PASSWORD, 'salt', 24) : undefined;
 const CIPHER_IV = Buffer.alloc(16, 0);
@@ -2031,10 +2040,21 @@ module.exports = class LDPoSChainModule {
   }
 
   getSortedPendingTransactions(transactions, senderAccountDetails) {
-    // This sorting algorithm groups transactions based on the sender address and
-    // sorts based on the average fee. This is necessary because the signature algorithm is
-    // stateful so the algorithm should give priority to older transactions which
-    // may have been signed using an older public key.
+    // ATTACK MITIGATION: This sorting algorithm prevents a spam attack where a malicious user
+    // could broadcast a transaction with signature key index N, let the network propagate it
+    // (consuming bandwidth/resources), then quickly broadcast another transaction with key
+    // index N+1, which would invalidate the first transaction by supplanting its key.
+    // The network would have wasted resources propagating a transaction that the attacker
+    // intentionally invalidated at little cost to themselves.
+    //
+    // This sorting ensures that transactions with older key indexes are prioritized for
+    // inclusion in blocks, making it economically non-viable for attackers to repudiate
+    // transactions after broadcast. Once a user broadcasts a valid transaction, they cannot
+    // cheaply invalidate it by advancing their key index.
+    //
+    // The algorithm groups transactions by sender address and sorts based on:
+    // - For sig transactions: public key (current before next), then key index (lower first)
+    // - For multisig transactions: average public key priority and key index delta of signers
     let transactionGroupMap = {};
     for (let txn of transactions) {
       if (!transactionGroupMap[txn.senderAddress]) {
