@@ -1,4 +1,4 @@
-const url = require('url');
+const { URL } = require('url');
 
 class NetworkModule {
   constructor(options) {
@@ -26,7 +26,8 @@ class NetworkModule {
     return {
       emit: async ({ event, data }) => {
         let eventParts = event.split(':');
-        let { pathname: moduleName } = url.parse(eventParts[0], true);
+        let parsedUrl = new URL(eventParts[0], 'http://localhost');
+        let moduleName = parsedUrl.pathname.replace(/^\//, '');
         let eventName = eventParts[1];
         let targetFunction = this.modules[moduleName].eventHandlers[eventName];
         if (!targetFunction) {
@@ -36,7 +37,8 @@ class NetworkModule {
       },
       request: async ({ procedure, data }) => {
         let procedureParts = procedure.split(':');
-        let { pathname: moduleName } = url.parse(procedureParts[0], true);
+        let parsedUrl = new URL(procedureParts[0], 'http://localhost');
+        let moduleName = parsedUrl.pathname.replace(/^\//, '');
         let actionName = procedureParts[1];
         let targetFunction = this.modules[moduleName].actionHandlers[actionName];
         if (!targetFunction) {
