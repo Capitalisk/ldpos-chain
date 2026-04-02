@@ -27,12 +27,15 @@
   "dependencies": {
     "bip39": "^3.0.3",
     "ldpos-client": "^11.3.0",
-    "lite-merkle": "^1.0.1",
+    "lite-merkle": "^2.0.1",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
   },
   "devDependencies": {
     "ldpos-pg-dal": "^6.0.1",
-    "mocha": "^11.7.5"
+    "mocha": "^11.3.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5"
   }
 }
