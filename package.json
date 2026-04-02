@@ -26,8 +26,8 @@
   "license": "AGPL-3.0",
   "dependencies": {
     "bip39": "^3.0.3",
-    "ldpos-client": "^11.3.0",
-    "lite-merkle": "^2.0.1",
+    "ldpos-client": "^12.2.6",
+    "lite-merkle": "^2.0.2",
     "lodash.shuffle": "^4.2.0",
     "writable-consumable-stream": "^2.0.0"
   },
