@@ -1,6 +1,6 @@
 {
   "name": "ldpos-chain",
-  "version": "9.2.4",
+  "version": "9.3.0",
   "description": "LDPoS chain module",
   "main": "index.js",
   "scripts": {
@@ -26,10 +26,10 @@
   "license": "AGPL-3.0",
   "dependencies": {
     "bip39": "^3.0.3",
-    "ldpos-client": "^12.2.6",
+    "ldpos-client": "^13.0.0",
     "lite-merkle": "^2.0.2",
     "lodash.shuffle": "^4.2.0",
-    "writable-consumable-stream": "^2.0.0"
+    "writable-consumable-stream": "^5.0.1"
   },
   "devDependencies": {
     "ldpos-pg-dal": "^6.0.1",
