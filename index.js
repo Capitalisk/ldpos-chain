@@ -1679,6 +1679,162 @@ module.exports = class LDPoSChainModule {
     }
   }
 
+  async getAccountVoteSet(voterAddress) {
+    let delegateAddressList;
+    try {
+      delegateAddressList = await this.dal.getAccountVotes(voterAddress);
+    } catch (error) {
+      throw new Error(
+        `Failed to fetch the votes of account ${
+          voterAddress
+        } because of error: ${
+          error.message
+        }`
+      );
+    }
+    return new Set(delegateAddressList);
+  }
+
+  // Returns a function which resolves to the vote set of the specified voter and caches
+  // the result. Most transactions are not vote changes, so the vote set of a sender is
+  // only fetched if one of their transactions actually needs it.
+  createVoteSetLoader(voterAddress) {
+    let voteSetPromise = null;
+    return () => {
+      if (!voteSetPromise) {
+        voteSetPromise = this.getAccountVoteSet(voterAddress);
+      }
+      return voteSetPromise;
+    };
+  }
+
+  // Validates a vote or unvote transaction against the current vote set of the voter and
+  // the set of registered delegates, then applies the change to the vote set so that
+  // later vote changes from the same voter are validated against the updated state.
+  // These rules are also enforced by the DAL but they are verified here so that a DAL
+  // which enforces them differently cannot cause nodes to disagree about which blocks
+  // are valid.
+  validateAndApplyVoteChange(transaction, voteSet, registeredDelegateSet) {
+    let { type, senderAddress, delegateAddress } = transaction;
+
+    if (!registeredDelegateSet.has(delegateAddress)) {
+      throw new Error(
+        `Delegate ${delegateAddress} did not exist to ${type}`
+      );
+    }
+
+    if (type === 'vote') {
+      // The order of these two checks matches the order used by the DAL so that both
+      // layers reject an offending vote with the same error.
+      if (voteSet.size >= this.maxVotesPerAccount) {
+        throw new Error(
+          `Voter account ${
+            senderAddress
+          } has already voted for ${
+            voteSet.size
+          } delegates so it cannot vote for any more`
+        );
+      }
+      if (voteSet.has(delegateAddress)) {
+        throw new Error(
+          `Voter ${senderAddress} has already voted for delegate ${delegateAddress}`
+        );
+      }
+      voteSet.add(delegateAddress);
+      return;
+    }
+
+    if (!voteSet.has(delegateAddress)) {
+      throw new Error(
+        `Voter ${
+          senderAddress
+        } could not unvote delegate ${
+          delegateAddress
+        } because it was not voting for it`
+      );
+    }
+    voteSet.delete(delegateAddress);
+  }
+
+  // Validates that every prospective member of a multisig wallet is eligible to be one.
+  // As with vote changes, these rules are also enforced by the DAL; they are duplicated
+  // here so that block validity does not depend on the DAL implementation.
+  validateMultisigWalletMembers(transaction, memberAccounts, existingMultisigAddressSet) {
+    let { memberAddresses } = transaction;
+
+    for (let memberAddress of memberAddresses) {
+      let memberAccount = memberAccounts[memberAddress];
+      if (!memberAccount) {
+        throw new Error(
+          `Account ${memberAddress} did not exist for multisig member registration`
+        );
+      }
+      if (!memberAccount.multisigPublicKey) {
+        throw new Error(
+          `Account ${
+            memberAddress
+          } was not registered for multisig so it cannot be a member of a multisig wallet`
+        );
+      }
+      if (
+        memberAccount.type === ACCOUNT_TYPE_MULTISIG ||
+        (existingMultisigAddressSet && existingMultisigAddressSet.has(memberAddress))
+      ) {
+        throw new Error(
+          `Account ${
+            memberAddress
+          } was a multisig wallet so it could not be registered as a member of another multisig wallet`
+        );
+      }
+    }
+  }
+
+  async fetchMultisigMemberAccounts(memberAddressList) {
+    let memberAccounts = {};
+    await Promise.all(
+      [...new Set(memberAddressList)].map(async (memberAddress) => {
+        let memberAccount;
+        try {
+          memberAccount = await this.getSanitizedAccount(memberAddress);
+        } catch (error) {
+          if (error.name === 'AccountDidNotExistError') {
+            return;
+          }
+          throw new Error(
+            `Failed to fetch multisig member account ${
+              memberAddress
+            } because of error: ${
+              error.message
+            }`
+          );
+        }
+        memberAccounts[memberAddress] = memberAccount;
+      })
+    );
+    return memberAccounts;
+  }
+
+  async verifyMultisigWalletRegistration(transaction) {
+    let memberAccounts = await this.fetchMultisigMemberAccounts(transaction.memberAddresses);
+    this.validateMultisigWalletMembers(transaction, memberAccounts, null);
+  }
+
+  // Verifies the rules of vote, unvote and registerMultisigWallet transactions which
+  // depend on state that is not part of the sender account.
+  async verifyTransactionStateRequirements(transaction, loadVoteSet) {
+    let { type } = transaction;
+
+    if (type === 'vote' || type === 'unvote') {
+      let registeredDelegateSet = new Set();
+      if (await this.dal.hasDelegate(transaction.delegateAddress)) {
+        registeredDelegateSet.add(transaction.delegateAddress);
+      }
+      this.validateAndApplyVoteChange(transaction, await loadVoteSet(), registeredDelegateSet);
+    } else if (type === 'registerMultisigWallet') {
+      await this.verifyMultisigWalletRegistration(transaction);
+    }
+  }
+
   verifyAccountMeetsRequirements(senderAccount, transaction) {
     let { senderAddress, amount, fee } = transaction;
 
@@ -1912,7 +2068,180 @@ module.exports = class LDPoSChainModule {
         multisigMemberAccounts
       };
     }
+
+    await this.verifyBlockStateTransactions(block);
+
     return senderAccountDetails;
+  }
+
+  // A previous attempt to process this block may have failed part-way through, in which
+  // case the state changes it contains could already have been applied. Account updates
+  // are the first thing which processBlock writes, so an up to date forger account means
+  // that processing got at least as far as the vote changes which follow.
+  async wasBlockPartiallyProcessed(block) {
+    let forgerAccount;
+    try {
+      forgerAccount = await this.getSanitizedAccount(block.forgerAddress);
+    } catch (error) {
+      if (error.name === 'AccountDidNotExistError') {
+        return false;
+      }
+      throw new Error(
+        `Failed to fetch the forger account of block ${
+          block.id
+        } because of error: ${
+          error.message
+        }`
+      );
+    }
+    return forgerAccount.updateHeight === block.height;
+  }
+
+  // Verifies the vote, unvote and registerMultisigWallet transactions of a block against
+  // the state which they will be applied to. A block which contains a transaction that
+  // violates these rules is rejected outright; without this, such a transaction would be
+  // skipped while the rest of the block was processed, which means that two nodes running
+  // DAL implementations that disagree about these rules would end up with divergent
+  // state while both believing that they were on the same chain.
+  async verifyBlockStateTransactions(block) {
+    await this.validateBlockStateTransactions(block, null);
+  }
+
+  // Validates the state-dependent transactions of a block in block order, which is the
+  // order in which block processing will apply them. When onInvalidTransaction is
+  // supplied, each offending transaction is reported to it and validation continues so
+  // that a forger can leave it out of the block it is assembling; otherwise the first
+  // offender throws, which rejects the block.
+  async validateBlockStateTransactions(block, onInvalidTransaction) {
+    let stateTransactions = [];
+    let memberAddressList = [];
+    let delegateAddressSet = new Set();
+    let blockRegisteredDelegateSet = new Set();
+    let voterAddressSet = new Set();
+
+    for (let transaction of block.transactions) {
+      let { type } = transaction;
+      if (type === 'vote' || type === 'unvote') {
+        stateTransactions.push(transaction);
+        voterAddressSet.add(transaction.senderAddress);
+        delegateAddressSet.add(transaction.delegateAddress);
+      } else if (type === 'registerMultisigWallet') {
+        stateTransactions.push(transaction);
+        memberAddressList.push(...transaction.memberAddresses);
+      } else if (type === 'registerForgingDetails') {
+        // processBlock registers new delegates before it applies vote changes, so a
+        // delegate which is registered earlier in the same block can be voted for.
+        blockRegisteredDelegateSet.add(transaction.senderAddress);
+      }
+    }
+
+    if (!stateTransactions.length) {
+      return;
+    }
+
+    let skipVoteChanges = false;
+    if (voterAddressSet.size && await this.wasBlockPartiallyProcessed(block)) {
+      // The vote state can no longer be used to verify the vote changes of this block.
+      // The block was already accepted by the network once, so the idempotency guards of
+      // the DAL are relied upon to make reprocessing it safe.
+      skipVoteChanges = true;
+    }
+
+    let voteSets = {};
+    let registeredDelegateSet = new Set(blockRegisteredDelegateSet);
+
+    if (!skipVoteChanges) {
+      await Promise.all([
+        ...[...voterAddressSet].map(async (voterAddress) => {
+          voteSets[voterAddress] = await this.getAccountVoteSet(voterAddress);
+        }),
+        ...[...delegateAddressSet].map(async (delegateAddress) => {
+          if (registeredDelegateSet.has(delegateAddress)) {
+            return;
+          }
+          if (await this.dal.hasDelegate(delegateAddress)) {
+            registeredDelegateSet.add(delegateAddress);
+          }
+        })
+      ]);
+    }
+
+    let memberAccounts = memberAddressList.length ?
+      await this.fetchMultisigMemberAccounts(memberAddressList) : {};
+
+    // registerMultisigWallet transactions are applied one after another during block
+    // processing, so an account which becomes a multisig wallet earlier in the block is
+    // no longer eligible to be a member of a wallet which is registered later in it.
+    let blockMultisigAddressSet = new Set();
+
+    for (let transaction of stateTransactions) {
+      let { type, senderAddress } = transaction;
+      let isMultisigRegistration = type === 'registerMultisigWallet';
+
+      if (!isMultisigRegistration && skipVoteChanges) {
+        continue;
+      }
+
+      try {
+        if (isMultisigRegistration) {
+          this.validateMultisigWalletMembers(transaction, memberAccounts, blockMultisigAddressSet);
+        } else {
+          this.validateAndApplyVoteChange(
+            transaction,
+            voteSets[senderAddress],
+            registeredDelegateSet
+          );
+        }
+      } catch (error) {
+        let blockError = new Error(
+          `Block contained an invalid ${
+            type
+          } transaction ${
+            transaction.id
+          } - ${
+            error.message
+          }`
+        );
+        if (!onInvalidTransaction) {
+          throw blockError;
+        }
+        onInvalidTransaction(transaction, blockError);
+        continue;
+      }
+
+      if (isMultisigRegistration) {
+        blockMultisigAddressSet.add(senderAddress);
+      }
+    }
+  }
+
+  // Removes the vote and multisig registration transactions which would make a block
+  // invalid once its transactions are verified in the order they appear in. The pending
+  // queue is verified in per-sender arrival order, which is not necessarily the order
+  // that transactions end up in within a block, so this runs the rule that peers will
+  // apply to the forged block over the final ordering.
+  async getForgeableTransactions(transactions, height, forgerAddress) {
+    let invalidTransactionIdSet = new Set();
+
+    await this.validateBlockStateTransactions(
+      { height, forgerAddress, transactions },
+      (transaction, error) => {
+        invalidTransactionIdSet.add(transaction.id);
+        this.logger.debug(
+          `Excluded pending transaction ${
+            transaction.id
+          } from the block being forged because of error: ${
+            error.message
+          }`
+        );
+        this.untrackPendingTransaction(transaction);
+      }
+    );
+
+    if (!invalidTransactionIdSet.size) {
+      return transactions;
+    }
+    return transactions.filter(transaction => !invalidTransactionIdSet.has(transaction.id));
   }
 
   validateBlockExists(block) {
@@ -2046,6 +2375,38 @@ module.exports = class LDPoSChainModule {
     }
   }
 
+  // Computes the ordering priority of a multisig transaction from the public keys and key
+  // indexes of its signers. A lower averagePublicKeyPriority means that more of its
+  // signers used their current (rather than their next) multisig public key, and a lower
+  // averageKeyIndexDelta means that its signers used older key indexes. Both are averaged
+  // over the signature count so that transactions signed by a different number of members
+  // remain comparable.
+  getMultisigTransactionSignerPriority(transaction, multisigMemberAccounts, memberMinKeyIndexes) {
+    let { signatures } = transaction;
+    let totalPublicKeyPriority = 0;
+    let totalKeyIndexDelta = 0;
+
+    for (let signaturePacket of signatures) {
+      let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
+      let publicKeyPriority;
+      if (signaturePacket.multisigPublicKey === signerAccount.multisigPublicKey) {
+        publicKeyPriority = 0;
+      } else if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
+        publicKeyPriority = 1;
+      } else {
+        publicKeyPriority = 2;
+      }
+      totalPublicKeyPriority += publicKeyPriority;
+      totalKeyIndexDelta += signaturePacket.nextMultisigKeyIndex -
+        memberMinKeyIndexes[signaturePacket.signerAddress];
+    }
+
+    return {
+      averagePublicKeyPriority: totalPublicKeyPriority / signatures.length,
+      averageKeyIndexDelta: totalKeyIndexDelta / signatures.length
+    };
+  }
+
   getSortedPendingTransactions(transactions, senderAccountDetails) {
     // ATTACK MITIGATION: This sorting algorithm prevents a spam attack where a malicious user
     // could broadcast a transaction with signature key index N, let the network propagate it
@@ -2124,54 +2485,27 @@ module.exports = class LDPoSChainModule {
           }
         }
         transactionGroup.transactions.sort((a, b) => {
-          let totalPublicKeyPriorityA = 0;
-          let totalKeyIndexDeltaA = 0;
-          for (let signaturePacket of a.signatures) {
-            let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
-            let publicKeyPriority;
-            if (signaturePacket.multisigPublicKey === signerAccount.multisigPublicKey) {
-              publicKeyPriority = 0;
-            } else if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
-              publicKeyPriority = 1;
-            } else {
-              publicKeyPriority = 2;
-            }
-            totalPublicKeyPriorityA += publicKeyPriority;
-            let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
-            totalKeyIndexDeltaA += keyIndexDelta;
-          }
-          let averagePublicKeyPriorityA = totalPublicKeyPriorityA / a.signatures.length;
-          let averageKeyIndexDeltaA = totalKeyIndexDeltaA / a.signatures.length;
+          let priorityA = this.getMultisigTransactionSignerPriority(
+            a,
+            multisigMemberAccounts,
+            memberMinKeyIndexes
+          );
+          let priorityB = this.getMultisigTransactionSignerPriority(
+            b,
+            multisigMemberAccounts,
+            memberMinKeyIndexes
+          );
 
-          let totalPublicKeyPriorityB = 0;
-          let totalKeyIndexDeltaB = 0;
-          for (let signaturePacket of b.signatures) {
-            let signerAccount = multisigMemberAccounts[signaturePacket.signerAddress];
-            let publicKeyPriority;
-            if (signaturePacket.multisigPublicKey === signerAccount.multisigPublicKey) {
-              publicKeyPriority = 0;
-            } else if (signaturePacket.multisigPublicKey === signerAccount.nextMultisigPublicKey) {
-              publicKeyPriority = 1;
-            } else {
-              publicKeyPriority = 2;
-            }
-            totalPublicKeyPriorityB += publicKeyPriority;
-            let keyIndexDelta = signaturePacket.nextMultisigKeyIndex - memberMinKeyIndexes[signaturePacket.signerAddress];
-            totalKeyIndexDeltaB += keyIndexDelta;
-          }
-          let averagePublicKeyPriorityB = totalPublicKeyPriorityB / b.signatures.length;
-          let averageKeyIndexDeltaB = totalKeyIndexDeltaB / b.signatures.length;
-
-          if (averagePublicKeyPriorityA < averagePublicKeyPriorityB) {
+          if (priorityA.averagePublicKeyPriority < priorityB.averagePublicKeyPriority) {
             return -1;
           }
-          if (averagePublicKeyPriorityA > averagePublicKeyPriorityB) {
+          if (priorityA.averagePublicKeyPriority > priorityB.averagePublicKeyPriority) {
             return 1;
           }
-          if (averageKeyIndexDeltaA < averageKeyIndexDeltaB) {
+          if (priorityA.averageKeyIndexDelta < priorityB.averageKeyIndexDelta) {
             return -1;
           }
-          if (averageKeyIndexDeltaA > averageKeyIndexDeltaB) {
+          if (priorityA.averageKeyIndexDelta > priorityB.averageKeyIndexDelta) {
             return 1;
           }
           return 0;
@@ -2376,6 +2710,10 @@ module.exports = class LDPoSChainModule {
               return null;
             }
             let pendingTxnInfoMap = senderTxnStream.transactionInfoMap;
+            // Vote changes are verified against the running vote state of the sender so
+            // that the forged block cannot contain a combination of vote changes which
+            // block verification would reject.
+            let loadVoteSet = this.createVoteSetLoader(senderAddress);
 
             for (let { transaction, receivedTimestamp } of pendingTxnInfoMap.values()) {
               try {
@@ -2385,6 +2723,12 @@ module.exports = class LDPoSChainModule {
                 } else {
                   txnTotal = await this.verifySigTransactionAuth(senderAccount, transaction, true, false);
                 }
+
+                // The vote change is applied to the running vote state even if the
+                // transaction turns out not to be ready for this block; a vote change
+                // which is held back stays in the queue and is verified again from
+                // freshly loaded state during the next time slot.
+                await this.verifyTransactionStateRequirements(transaction, loadVoteSet);
 
                 let isTransactionReady = true;
 
@@ -2443,7 +2787,12 @@ module.exports = class LDPoSChainModule {
 
         if (this.ldposForgingClients[currentForgingDelegateAddress]) {
           let pendingTransactions = this.getSortedPendingTransactions(readyTransactions, senderAccountDetails);
-          let blockTransactions = pendingTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
+          let forgeableTransactions = await this.getForgeableTransactions(
+            pendingTransactions,
+            nextHeight,
+            currentForgingDelegateAddress
+          );
+          let blockTransactions = forgeableTransactions.slice(0, maxTransactionsPerBlock).map(txn => this.simplifyTransaction(txn, true));
           let [ forgedBlock, forgerAccount ] = await Promise.all([
             this.forgeBlock(currentForgingDelegateAddress, nextHeight, blockTimestamp, blockTransactions),
             this.dal.getAccount(currentForgingDelegateAddress)

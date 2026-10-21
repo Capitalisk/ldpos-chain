@@ -25,6 +25,10 @@ const FORGER_ADDRESS = 'ldpos313ac2d3d1d081901be0c5ce074d1e81a8a0bf5f';
 const WALLET_A_PASSPHRASE = 'birth select quiz process bid raccoon memory village snow cable agent bean';
 const WALLET_A_ADDRESS = 'ldpos5f0bc55450657f7fcb188e90122f7e4cee894199';
 const WALLET_B_ADDRESS = 'ldposaed82ed3f324e738306301ca4d6b955580d4bc24';
+// Registered as a multisig wallet by the functional genesis.
+const MULTISIG_ADDRESS = 'ldpos6da4367efe495a14a8cc38064c61879cea884e60';
+// A well-formed address which does not belong to any genesis account.
+const UNUSED_ADDRESS = makeAddress('c');
 
 const useDal = process.env.USE_DAL;
 const dalLibPath = useDal ? useDal : './test/utils/dal';
@@ -757,6 +761,537 @@ describe('Security regression tests', async () => {
           `Expected a validation error but got a dereference error: ${postError.message}`
         );
       }
+    }).timeout(30000);
+
+  });
+
+  // The vote, unvote and registerMultisigWallet rules are enforced by the DAL as well.
+  // Before these checks existed in the chain module, a transaction which violated them
+  // was skipped while the rest of the block around it was processed, so two nodes whose
+  // DAL implementations disagreed about any of these rules would end up with divergent
+  // state while both believing that they were on the same chain.
+  describe('7. Block level vote and multisig state validation', async () => {
+
+    function makeVoteTransaction(id, type, senderAddress, delegateAddress) {
+      return { id, type, senderAddress, delegateAddress };
+    }
+
+    function makeBlock(transactions, height) {
+      return {
+        id: 'a'.repeat(40),
+        height: height == null ? 1 : height,
+        forgerAddress: FORGER_ADDRESS,
+        transactions
+      };
+    }
+
+    async function assertBlockRejected(block, expectedPattern) {
+      let verificationError = null;
+      try {
+        await chainModule.verifyBlockStateTransactions(block);
+      } catch (error) {
+        verificationError = error;
+      }
+      assert.notEqual(verificationError, null, 'Expected the block to be rejected');
+      assert.equal(
+        expectedPattern.test(verificationError.message),
+        true,
+        `Unexpected error message: ${verificationError.message}`
+      );
+      return verificationError;
+    }
+
+    describe('vote transactions', async () => {
+
+      it('should reject a block which votes for a delegate that does not exist', async () => {
+        await loadAndSettle();
+
+        await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, UNUSED_ADDRESS)
+          ]),
+          /invalid vote transaction v1 - Delegate .* did not exist to vote/
+        );
+      }).timeout(30000);
+
+      it('should reject a block which votes for a delegate the sender already votes for', async () => {
+        await loadAndSettle();
+
+        // Every genesis account already votes for the forger.
+        await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, FORGER_ADDRESS)
+          ]),
+          /invalid vote transaction v1 - Voter .* has already voted for delegate/
+        );
+      }).timeout(30000);
+
+      it('should reject a block whose vote would exceed the maximum votes per account', async () => {
+        await loadAndSettle({ maxVotesPerAccount: 1 });
+
+        await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, WALLET_B_ADDRESS)
+          ]),
+          /invalid vote transaction v1 - Voter account .* cannot vote for any more/
+        );
+      }).timeout(30000);
+
+      it('should reject a block whose votes only exceed the maximum when counted together', async () => {
+        // Each vote is individually valid against the stored vote state, so this can only
+        // be caught by replaying the vote changes of the block in order.
+        await loadAndSettle({ maxVotesPerAccount: 2 });
+
+        let verificationError = await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, WALLET_B_ADDRESS),
+            makeVoteTransaction('v2', 'vote', WALLET_A_ADDRESS, MULTISIG_ADDRESS)
+          ]),
+          /Voter account .* cannot vote for any more/
+        );
+        assert.equal(
+          /transaction v2/.test(verificationError.message),
+          true,
+          `Expected the second vote to be the one rejected: ${verificationError.message}`
+        );
+      }).timeout(30000);
+
+      it('should reject a block which unvotes a delegate the sender is not voting for', async () => {
+        await loadAndSettle();
+
+        await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('u1', 'unvote', WALLET_A_ADDRESS, WALLET_B_ADDRESS)
+          ]),
+          /invalid unvote transaction u1 - Voter .* was not voting for it/
+        );
+      }).timeout(30000);
+
+      it('should reject a block which unvotes the same delegate twice', async () => {
+        await loadAndSettle();
+
+        await assertBlockRejected(
+          makeBlock([
+            makeVoteTransaction('u1', 'unvote', WALLET_A_ADDRESS, FORGER_ADDRESS),
+            makeVoteTransaction('u2', 'unvote', WALLET_A_ADDRESS, FORGER_ADDRESS)
+          ]),
+          /invalid unvote transaction u2 - Voter .* was not voting for it/
+        );
+      }).timeout(30000);
+
+      it('should accept a block which unvotes and then re-votes the same delegate', async () => {
+        await loadAndSettle({ maxVotesPerAccount: 1 });
+
+        // The re-vote only fits under the vote limit because the unvote before it
+        // released the slot, so this verifies that vote changes are applied in order.
+        await chainModule.verifyBlockStateTransactions(
+          makeBlock([
+            makeVoteTransaction('u1', 'unvote', WALLET_A_ADDRESS, FORGER_ADDRESS),
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, FORGER_ADDRESS)
+          ])
+        );
+      }).timeout(30000);
+
+      it('should accept a vote for a delegate which is registered earlier in the same block', async () => {
+        await loadAndSettle();
+
+        // processBlock registers delegates before it applies vote changes, so verification
+        // must not reject a vote for a delegate which this block brings into existence.
+        await chainModule.verifyBlockStateTransactions(
+          makeBlock([
+            {
+              id: 'r1',
+              type: 'registerForgingDetails',
+              senderAddress: UNUSED_ADDRESS
+            },
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, UNUSED_ADDRESS)
+          ])
+        );
+      }).timeout(30000);
+
+      it('should not re-verify vote changes of a block which was already partially processed', async () => {
+        await loadAndSettle();
+
+        // Genesis accounts are stored with an updateHeight of 0, so a block at height 0
+        // looks like one whose account updates have already been written. Re-verifying
+        // its vote changes against the resulting state would reject a block which the
+        // network had already accepted, so they have to be skipped.
+        assert.equal(
+          await chainModule.wasBlockPartiallyProcessed(makeBlock([], 0)),
+          true
+        );
+
+        await chainModule.verifyBlockStateTransactions(
+          makeBlock([
+            makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, FORGER_ADDRESS)
+          ], 0)
+        );
+      }).timeout(30000);
+
+      it('should reject a vote transaction inside a block during full block verification', async () => {
+        await loadAndSettle();
+
+        // Goes through verifyBlockTransactions to confirm that the state checks are
+        // actually wired into the path which blocks received from peers travel down.
+        let clientA = createClient({
+          adapter,
+          keyManager,
+          networkSymbol: NETWORK_SYMBOL
+        });
+        await clientA.connect({ passphrase: WALLET_A_PASSPHRASE });
+
+        let preparedTxn = await clientA.prepareTransaction({
+          type: 'vote',
+          delegateAddress: UNUSED_ADDRESS,
+          fee: '20000000',
+          timestamp: 100000,
+          message: ''
+        });
+
+        // Blocks carry transactions in their simplified form.
+        let blockTransaction = chainModule.simplifyTransaction(preparedTxn, true);
+
+        let verificationError = null;
+        try {
+          await chainModule.verifyBlockTransactions(makeBlock([blockTransaction]));
+        } catch (error) {
+          verificationError = error;
+        }
+
+        assert.notEqual(verificationError, null, 'Expected block verification to fail');
+        assert.equal(
+          /Delegate .* did not exist to vote/.test(verificationError.message),
+          true,
+          `Unexpected error message: ${verificationError.message}`
+        );
+      }).timeout(30000);
+
+      it('should exclude offending transactions in the order a block will carry them', async () => {
+        await loadAndSettle({ maxVotesPerAccount: 1 });
+
+        // The pending queue is verified per sender in arrival order, but a block carries
+        // transactions in sorted order and peers verify vote changes in block order. Only
+        // the second of these two votes can be valid, and which one that is depends on the
+        // order, so the forger has to apply the rule to the final ordering.
+        let transactions = [
+          makeVoteTransaction('v1', 'unvote', WALLET_A_ADDRESS, FORGER_ADDRESS),
+          makeVoteTransaction('v2', 'vote', WALLET_A_ADDRESS, WALLET_B_ADDRESS),
+          makeVoteTransaction('v3', 'vote', WALLET_A_ADDRESS, MULTISIG_ADDRESS)
+        ];
+
+        let forgeableTransactions = await chainModule.getForgeableTransactions(
+          transactions,
+          1,
+          FORGER_ADDRESS
+        );
+
+        // The unvote frees the single vote slot, the first vote takes it and the second
+        // one has to be left out.
+        assert.deepEqual(
+          forgeableTransactions.map(txn => txn.id),
+          ['v1', 'v2']
+        );
+
+        // Whatever survives filtering must pass block verification unchanged.
+        await chainModule.verifyBlockStateTransactions(
+          makeBlock(forgeableTransactions)
+        );
+      }).timeout(30000);
+
+      it('should leave a valid set of transactions untouched when assembling a block', async () => {
+        await loadAndSettle({ maxVotesPerAccount: 3 });
+
+        let transactions = [
+          makeVoteTransaction('v1', 'vote', WALLET_A_ADDRESS, WALLET_B_ADDRESS),
+          makeVoteTransaction('v2', 'vote', WALLET_B_ADDRESS, WALLET_A_ADDRESS)
+        ];
+
+        let forgeableTransactions = await chainModule.getForgeableTransactions(
+          transactions,
+          1,
+          FORGER_ADDRESS
+        );
+
+        assert.deepEqual(
+          forgeableTransactions.map(txn => txn.id),
+          ['v1', 'v2']
+        );
+      }).timeout(30000);
+
+      it('should drop a pending vote for a non-existent delegate instead of forging it into a block', async () => {
+        // Block verification rejecting these transactions is only safe if a forging node
+        // never puts one into a block in the first place.
+        await loadAndSettle();
+
+        let clientA = createClient({
+          adapter,
+          keyManager,
+          networkSymbol: NETWORK_SYMBOL
+        });
+        await clientA.connect({ passphrase: WALLET_A_PASSPHRASE });
+
+        let preparedTxn = await clientA.prepareTransaction({
+          type: 'vote',
+          delegateAddress: UNUSED_ADDRESS,
+          fee: '20000000',
+          timestamp: 100000,
+          message: ''
+        });
+
+        await chainModule.actions.postTransaction.handler({
+          params: { transaction: preparedTxn }
+        });
+
+        assert.equal(
+          chainModule.pendingTransactionMap.has(preparedTxn.id),
+          true,
+          'Expected the transaction to be accepted into the pending queue'
+        );
+
+        // The pending queue is re-verified at the start of every block time slot.
+        await wait(FORGING_INTERVAL * 1.5);
+
+        assert.equal(
+          chainModule.pendingTransactionMap.has(preparedTxn.id),
+          false,
+          'Expected the invalid pending vote to be dropped before a block could be forged'
+        );
+      }).timeout(45000);
+
+    });
+
+    describe('registerMultisigWallet transactions', async () => {
+
+      function makeMultisigRegistration(id, senderAddress, memberAddresses) {
+        return {
+          id,
+          type: 'registerMultisigWallet',
+          senderAddress,
+          memberAddresses,
+          requiredSignatureCount: 1
+        };
+      }
+
+      it('should reject a block which registers a multisig wallet with a non-existent member', async () => {
+        await loadAndSettle();
+
+        await assertBlockRejected(
+          makeBlock([
+            makeMultisigRegistration('m1', WALLET_A_ADDRESS, [UNUSED_ADDRESS])
+          ]),
+          /invalid registerMultisigWallet transaction m1 - Account .* did not exist for multisig member registration/
+        );
+      }).timeout(30000);
+
+      it('should reject a block which registers a multisig wallet as a member of another one', async () => {
+        await loadAndSettle();
+
+        await assertBlockRejected(
+          makeBlock([
+            makeMultisigRegistration('m1', WALLET_A_ADDRESS, [MULTISIG_ADDRESS])
+          ]),
+          /invalid registerMultisigWallet transaction m1 - Account .* was a multisig wallet/
+        );
+      }).timeout(30000);
+
+      it('should accept a block which registers a multisig wallet with eligible members', async () => {
+        await loadAndSettle();
+
+        await chainModule.verifyBlockStateTransactions(
+          makeBlock([
+            makeMultisigRegistration('m1', WALLET_A_ADDRESS, [WALLET_B_ADDRESS])
+          ])
+        );
+      }).timeout(30000);
+
+      it('should reject a member which becomes a multisig wallet earlier in the same block', async () => {
+        await loadAndSettle();
+
+        // Registrations are applied one after another, so by the time the second one is
+        // processed, wallet A is a multisig wallet and can no longer be a member.
+        await assertBlockRejected(
+          makeBlock([
+            makeMultisigRegistration('m1', WALLET_A_ADDRESS, [WALLET_B_ADDRESS]),
+            makeMultisigRegistration('m2', WALLET_B_ADDRESS, [WALLET_A_ADDRESS])
+          ]),
+          /invalid registerMultisigWallet transaction m2 - Account .* was a multisig wallet/
+        );
+      }).timeout(30000);
+
+      it('should validate every member eligibility rule', async () => {
+        await loadAndSettle();
+
+        let eligibleMember = {
+          address: WALLET_A_ADDRESS,
+          type: 'sig',
+          multisigPublicKey: makePublicKey('1')
+        };
+
+        // A member which is eligible.
+        chainModule.validateMultisigWalletMembers(
+          { memberAddresses: [WALLET_A_ADDRESS] },
+          { [WALLET_A_ADDRESS]: eligibleMember },
+          new Set()
+        );
+
+        let cases = [
+          {
+            name: 'a member account which does not exist',
+            memberAccounts: {},
+            pattern: /did not exist for multisig member registration/
+          },
+          {
+            name: 'a member which is not registered for multisig',
+            memberAccounts: {
+              [WALLET_A_ADDRESS]: { address: WALLET_A_ADDRESS, type: 'sig' }
+            },
+            pattern: /was not registered for multisig/
+          },
+          {
+            name: 'a member which is itself a multisig wallet',
+            memberAccounts: {
+              [WALLET_A_ADDRESS]: { ...eligibleMember, type: 'multisig' }
+            },
+            pattern: /was a multisig wallet/
+          }
+        ];
+
+        for (let testCase of cases) {
+          let validationError = null;
+          try {
+            chainModule.validateMultisigWalletMembers(
+              { memberAddresses: [WALLET_A_ADDRESS] },
+              testCase.memberAccounts,
+              new Set()
+            );
+          } catch (error) {
+            validationError = error;
+          }
+          assert.notEqual(validationError, null, `Expected ${testCase.name} to be rejected`);
+          assert.equal(
+            testCase.pattern.test(validationError.message),
+            true,
+            `Unexpected error message for ${testCase.name}: ${validationError.message}`
+          );
+        }
+      }).timeout(30000);
+
+    });
+
+  });
+
+  describe('8. Multisig pending transaction signer priority', async () => {
+
+    const MEMBER_A_ADDRESS = makeAddress('d');
+    const MEMBER_B_ADDRESS = makeAddress('e');
+    const CURRENT_KEY = makePublicKey('1');
+    const NEXT_KEY = makePublicKey('2');
+    const UNKNOWN_KEY = makePublicKey('3');
+
+    let multisigMemberAccounts;
+
+    beforeEach(async () => {
+      multisigMemberAccounts = {
+        [MEMBER_A_ADDRESS]: {
+          address: MEMBER_A_ADDRESS,
+          multisigPublicKey: CURRENT_KEY,
+          nextMultisigPublicKey: NEXT_KEY
+        },
+        [MEMBER_B_ADDRESS]: {
+          address: MEMBER_B_ADDRESS,
+          multisigPublicKey: CURRENT_KEY,
+          nextMultisigPublicKey: NEXT_KEY
+        }
+      };
+    });
+
+    function makeSignaturePacket(signerAddress, multisigPublicKey, nextMultisigKeyIndex) {
+      return { signerAddress, multisigPublicKey, nextMultisigKeyIndex };
+    }
+
+    it('should rank a current multisig public key ahead of a next or unknown one', async () => {
+      await loadAndSettle();
+
+      let memberMinKeyIndexes = { [MEMBER_A_ADDRESS]: 1 };
+
+      let priorities = [CURRENT_KEY, NEXT_KEY, UNKNOWN_KEY].map((multisigPublicKey) => {
+        return chainModule.getMultisigTransactionSignerPriority(
+          { signatures: [makeSignaturePacket(MEMBER_A_ADDRESS, multisigPublicKey, 1)] },
+          multisigMemberAccounts,
+          memberMinKeyIndexes
+        ).averagePublicKeyPriority;
+      });
+
+      assert.deepEqual(priorities, [0, 1, 2]);
+    }).timeout(30000);
+
+    it('should average the priority and key index delta over the signature count', async () => {
+      await loadAndSettle();
+
+      let memberMinKeyIndexes = {
+        [MEMBER_A_ADDRESS]: 1,
+        [MEMBER_B_ADDRESS]: 4
+      };
+
+      let priority = chainModule.getMultisigTransactionSignerPriority(
+        {
+          signatures: [
+            makeSignaturePacket(MEMBER_A_ADDRESS, CURRENT_KEY, 3),
+            makeSignaturePacket(MEMBER_B_ADDRESS, NEXT_KEY, 4)
+          ]
+        },
+        multisigMemberAccounts,
+        memberMinKeyIndexes
+      );
+
+      // Public key priorities of 0 and 1, key index deltas of 2 and 0.
+      assert.equal(priority.averagePublicKeyPriority, 0.5);
+      assert.equal(priority.averageKeyIndexDelta, 1);
+    }).timeout(30000);
+
+    it('should order multisig transactions by public key priority and then by key index', async () => {
+      await loadAndSettle();
+
+      let senderAccountDetails = {
+        [MULTISIG_ADDRESS]: {
+          senderAccount: {
+            address: MULTISIG_ADDRESS,
+            type: 'multisig'
+          },
+          multisigMemberAccounts
+        }
+      };
+
+      let transactions = [
+        {
+          id: 'third',
+          senderAddress: MULTISIG_ADDRESS,
+          fee: '10000000',
+          signatures: [makeSignaturePacket(MEMBER_A_ADDRESS, NEXT_KEY, 7)]
+        },
+        {
+          id: 'second',
+          senderAddress: MULTISIG_ADDRESS,
+          fee: '10000000',
+          signatures: [makeSignaturePacket(MEMBER_A_ADDRESS, CURRENT_KEY, 9)]
+        },
+        {
+          id: 'first',
+          senderAddress: MULTISIG_ADDRESS,
+          fee: '10000000',
+          signatures: [makeSignaturePacket(MEMBER_A_ADDRESS, CURRENT_KEY, 7)]
+        }
+      ];
+
+      let sortedTransactions = chainModule.getSortedPendingTransactions(
+        transactions,
+        senderAccountDetails
+      );
+
+      assert.deepEqual(
+        sortedTransactions.map(txn => txn.id),
+        ['first', 'second', 'third']
+      );
     }).timeout(30000);
 
   });
