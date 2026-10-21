@@ -21,6 +21,21 @@ function validateMultisigTransactionSchema(multisigTransaction, minSignatures, m
   if (!multisigTransaction) {
     throw new Error('Multisig transaction was not specified');
   }
+  if (multisigTransaction.senderSignature != null) {
+    throw new Error(
+      `Multisig transaction had a senderSignature property which is only allowed on sig transactions`
+    );
+  }
+  if (multisigTransaction.senderSignatureHash != null) {
+    throw new Error(
+      `Multisig transaction had a senderSignatureHash property which is only allowed on sig transactions`
+    );
+  }
+  if (multisigTransaction.sigPublicKey != null) {
+    throw new Error(
+      `Multisig transaction had a sigPublicKey property which is only allowed on sig transactions`
+    );
+  }
   let { signatures } = multisigTransaction;
   if (!Array.isArray(signatures)) {
     throw new Error('Multisig transaction signatures must be an array');

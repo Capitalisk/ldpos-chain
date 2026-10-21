@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "mocha --reporter spec --timeout 50000 --slow 50000",
+    "test:security": "mocha --reporter spec --timeout 50000 --slow 50000 test/security-tests.js",
     "start:postgres": "cd node_modules/ldpos-pg-dal && yarn start:db",
     "stop:postgres": "cd node_modules/ldpos-pg-dal && yarn stop:db",
     "reset:postgres": "cd node_modules/ldpos-pg-dal && yarn reset:db",

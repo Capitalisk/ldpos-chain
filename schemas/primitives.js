@@ -209,6 +209,9 @@ function validateTransactionAmount(propertyName, packet, maxSpendableDigits) {
   if (amountBigInt.toString() !== amount) {
     throw new Error(`Transaction amount in ${propertyName} could not be serialized in a deterministic way`);
   }
+  if (amountBigInt < 0n) {
+    throw new Error(`Transaction amount in ${propertyName} cannot be negative`);
+  }
 }
 
 function validateTransactionFee(propertyName, packet, maxSpendableDigits) {
@@ -227,6 +230,9 @@ function validateTransactionFee(propertyName, packet, maxSpendableDigits) {
   }
   if (feeBigInt.toString() !== fee) {
     throw new Error(`Transaction fee in ${propertyName} could not be serialized in a deterministic way`);
+  }
+  if (feeBigInt < 0n) {
+    throw new Error(`Transaction fee in ${propertyName} cannot be negative`);
   }
 }
 

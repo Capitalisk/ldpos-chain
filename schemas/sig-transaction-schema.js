@@ -9,6 +9,11 @@ function validateSigTransactionSchema(sigTransaction, fullCheck) {
   if (!sigTransaction) {
     throw new Error('Sig transaction was not specified');
   }
+  if (sigTransaction.signatures != null) {
+    throw new Error(
+      `Sig transaction had a signatures property which is only allowed on multisig transactions`
+    );
+  }
   validatePublicKey('sigPublicKey', sigTransaction);
   validatePublicKey('nextSigPublicKey', sigTransaction);
   validateKeyIndex('nextSigKeyIndex', sigTransaction);

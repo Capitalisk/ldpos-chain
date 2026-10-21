@@ -1683,6 +1683,13 @@ module.exports = class LDPoSChainModule {
     let { senderAddress, amount, fee } = transaction;
 
     let txnTotal = BigInt(amount || 0) + BigInt(fee || 0);
+    if (txnTotal < 0n) {
+      throw new Error(
+        `Transaction amount plus fee of sender ${
+          senderAddress
+        } cannot be negative`
+      );
+    }
     if (txnTotal > senderAccount.balance) {
       throw new Error(
         `Transaction amount plus fee was greater than the balance of sender ${
@@ -2061,14 +2068,14 @@ module.exports = class LDPoSChainModule {
         transactionGroupMap[txn.senderAddress] = {
           senderAddress: txn.senderAddress,
           transactions: [],
-          totalFees: 0
+          totalFees: 0n
         };
       }
       let transactionGroup = transactionGroupMap[txn.senderAddress];
       if (!transactionGroup.type) {
         transactionGroup.type = txn.sigPublicKey ? ACCOUNT_TYPE_SIG : ACCOUNT_TYPE_MULTISIG;
       }
-      transactionGroup.totalFees += txn.fee;
+      transactionGroup.totalFees += BigInt(txn.fee);
       transactionGroup.transactions.push(txn);
     }
     let transactionGroupList = Object.values(transactionGroupMap);
@@ -2170,14 +2177,16 @@ module.exports = class LDPoSChainModule {
           return 0;
         });
       }
-      transactionGroup.averageFee = transactionGroup.totalFees / transactionGroup.transactions.length;
     }
 
     transactionGroupList.sort((a, b) => {
-      if (a.averageFee > b.averageFee) {
+      // Compares the average fee of each group without truncating the remainder.
+      let aWeightedFees = a.totalFees * BigInt(b.transactions.length);
+      let bWeightedFees = b.totalFees * BigInt(a.transactions.length);
+      if (aWeightedFees > bWeightedFees) {
         return -1;
       }
-      if (a.averageFee < b.averageFee) {
+      if (aWeightedFees < bWeightedFees) {
         return 1;
       }
       return 0;
@@ -2726,7 +2735,12 @@ module.exports = class LDPoSChainModule {
         this.maxMultisigMembers
       );
     } catch (error) {
-      throw new Error(`Received invalid transaction ${transaction.id} - ${error.message}`);
+      let transactionId = transaction == null ? null : transaction.id;
+      throw new Error(
+        `Received invalid transaction${
+          transactionId == null ? '' : ` ${transactionId}`
+        } - ${error.message}`
+      );
     }
 
     this.logger.info(
@@ -2932,7 +2946,13 @@ module.exports = class LDPoSChainModule {
         } catch (error) {
           this.logger.debug(error.message);
         }
-      })();
+      })().catch((error) => {
+        this.logger.error(
+          new Error(
+            `Failed to handle the received transaction because of error: ${error.message}`
+          )
+        );
+      });
     });
   }
 
@@ -3068,6 +3088,17 @@ module.exports = class LDPoSChainModule {
           }
           let pendingTxn = pendingTxnStream.transactionInfoMap.get(txn.id).transaction;
 
+          if (!!txn.signatures !== !!pendingTxn.signatures) {
+            this.logger.debug(
+              `Block ${
+                block.id
+              } contained transaction ${
+                txn.id
+              } whose signature structure did not match that of the pending transaction`
+            );
+            return;
+          }
+
           if (txn.signatures) {
             // For multisig transaction.
             let pendingTxnSignatures = {};
@@ -3109,7 +3140,13 @@ module.exports = class LDPoSChainModule {
         });
 
         await this.propagateBlock(block, true);
-      })();
+      })().catch((error) => {
+        this.logger.error(
+          new Error(
+            `Failed to handle the received block because of error: ${error.message}`
+          )
+        );
+      });
     });
   }
 
@@ -3131,11 +3168,11 @@ module.exports = class LDPoSChainModule {
           return;
         }
 
-        validateBlockSignatureSchema(blockSignature, this.networkSymbol);
-
         let lastReceivedBlock = this.lastReceivedBlock;
 
         try {
+          validateBlockSignatureSchema(blockSignature, this.networkSymbol);
+
           this.validateBlockExists(lastReceivedBlock);
           this.validateSignatureCorrespondsToBlock(lastReceivedBlock, blockSignature);
           this.validateSignatureBelongsToTopForger(blockSignature);
@@ -3182,7 +3219,13 @@ module.exports = class LDPoSChainModule {
         } catch (error) {
           this.logger.error(error);
         }
-      })();
+      })().catch((error) => {
+        this.logger.error(
+          new Error(
+            `Failed to handle the received block signature because of error: ${error.message}`
+          )
+        );
+      });
     });
   }
 
@@ -3485,7 +3528,9 @@ module.exports = class LDPoSChainModule {
     this.maxPendingTransactionsPerAccount = this.options.maxPendingTransactionsPerAccount;
     this.maxConsecutiveTransactionFetchFailures = this.options.maxConsecutiveTransactionFetchFailures;
     this.geneses = this.options.geneses;
-    this.genesesHeights = Object.keys(this.geneses).map(heightString => Number(heightString)).sort();
+    this.genesesHeights = Object.keys(this.geneses)
+      .map(heightString => Number(heightString))
+      .sort((heightA, heightB) => heightA - heightB);
     this.blockForgerSamplingFactor = this.options.blockForgerSamplingFactor;
     this.apiLimit = this.options.apiLimit;
     this.maxPublicAPILimit = this.options.maxPublicAPILimit;
